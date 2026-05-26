@@ -131,6 +131,27 @@ class HttpClient {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
   }
+
+  // HTTP method delegators
+  public get<T = any>(url: string, config?: any) {
+    return this.client.get<T>(url, config);
+  }
+
+  public post<T = any>(url: string, data?: any, config?: any) {
+    return this.client.post<T>(url, data, config);
+  }
+
+  public put<T = any>(url: string, data?: any, config?: any) {
+    return this.client.put<T>(url, data, config);
+  }
+
+  public patch<T = any>(url: string, data?: any, config?: any) {
+    return this.client.patch<T>(url, data, config);
+  }
+
+  public delete<T = any>(url: string, config?: any) {
+    return this.client.delete<T>(url, config);
+  }
 }
 
 export const httpClient = new HttpClient();

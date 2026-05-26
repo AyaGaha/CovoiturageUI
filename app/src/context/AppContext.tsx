@@ -1,19 +1,11 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import type { Trip, Booking, Alert, Notification, User, BookingRequest, BookingStatus } from '@/types';
-import {
-  currentUser,
-  mockTrips,
-  mockBookings,
-  mockAlerts,
-  mockNotifications,
-  driverTrips,
-  mockBookingRequests,
-} from '@/data/mockData';
+import type { Trip, Booking, Alert, Notification, User, BookingRequest, BookingStatus, Review } from '@/types';
 import { authService } from '@/services/auth';
 import { tripsService } from '@/services/trips';
 import { bookingsService } from '@/services/bookings';
 import { alertsService } from '@/services/alerts';
 import { usersService } from '@/services/users';
+import { reviewsService } from '@/services/reviews';
 
 interface AppContextType {
   // Auth
@@ -24,6 +16,8 @@ interface AppContextType {
   register: (name: string, email: string, password: string, phone?: string) => Promise<void>;
   authModal: boolean;
   setAuthModal: (open: boolean) => void;
+  authMode: 'login' | 'register';
+  setAuthMode: (mode: 'login' | 'register') => void;
   authLoading: boolean;
 
   // Trips
@@ -65,6 +59,7 @@ interface AppContextType {
   // Profile
   updateProfile: (data: Partial<User>) => Promise<void>;
   profileLoading: boolean;
+  reviews: Review[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -73,32 +68,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Auth
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [authModal, setAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authLoading, setAuthLoading] = useState(false);
 
   // Trips
-  const [trips, setTrips] = useState<Trip[]>(mockTrips);
-  const [driverTripsState, setDriverTripsState] = useState<Trip[]>(driverTrips);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [driverTripsState, setDriverTripsState] = useState<Trip[]>([]);
   const [tripsLoading, setTripsLoading] = useState(false);
 
   // Bookings
-  const [bookings, setBookings] = useState<Booking[]>(mockBookings);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
 
   // Driver requests
-  const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>(mockBookingRequests);
+  const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([]);
 
   // Alerts
-  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
 
   // Notifications
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
 
   // Profile
   const [profileLoading, setProfileLoading] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
 
-  const [userState, setUserState] = useState<User | null>(authService.getStoredUser() || currentUser);
+  const [userState, setUserState] = useState<User | null>(authService.getStoredUser());
 
   const notificationIdRef = useRef(4);
 
@@ -132,14 +129,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Initialize data on mount
   useEffect(() => {
     const initializeApp = async () => {
+      // Always load public trips
+      try {
+        await loadTrips();
+      } catch (error) {
+        console.error('Failed to load trips:', error);
+      }
+
+      // Load user-specific data if authenticated
       if (isAuthenticated) {
         try {
           // Load user profile
           const userProfile = await usersService.getMe();
           setUserState(userProfile as User);
 
-          // Load trips
-          await loadTrips();
+          // Load reviews
+          const userReviews = await reviewsService.getDriverReviews(userProfile.id);
+          setReviews(userReviews);
 
           // Load bookings
           await loadBookings();
@@ -148,7 +154,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await loadAlerts();
         } catch (error) {
           console.error('Failed to initialize app:', error);
-          // Fall back to mock data
+          // Fall back to empty state
         }
       }
     };
@@ -273,22 +279,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const searchTrips = useCallback(async (departure: string, destination: string, date: string) => {
+  const searchTrips = useCallback(async (departure: string, destination: string, _date: string) => {
     try {
-      return await tripsService.searchTrips({
+      const response = await tripsService.searchTrips({
         departure: departure || undefined,
         destination: destination || undefined,
       });
+      // Extract trips from GraphQL response
+      const searchedTrips = response.edges?.map(edge => edge.node) || [];
+      return searchedTrips;
     } catch (error) {
       console.error('Search trips failed:', error);
-      return trips.filter(trip => {
-        const matchDeparture = !departure || trip.departure.toLowerCase().includes(departure.toLowerCase());
-        const matchDestination = !destination || trip.destination.toLowerCase().includes(destination.toLowerCase());
-        const matchDate = !date || trip.date === date;
-        return matchDeparture && matchDestination && matchDate && trip.status === 'active';
-      });
+      throw error; // Don't fallback to mock data
     }
-  }, [trips]);
+  }, []);
 
   const createBooking = useCallback(async (tripId: number) => {
     try {
@@ -523,6 +527,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         register,
         authModal,
         setAuthModal,
+        authMode,
+        setAuthMode,
         authLoading,
         trips,
         driverTrips: driverTripsState,
@@ -552,6 +558,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addNotification,
         updateProfile,
         profileLoading,
+        reviews,
       }}
     >
       {children}

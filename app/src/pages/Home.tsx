@@ -106,7 +106,7 @@ function SearchBar({
 }
 
 export default function Home() {
-  const { searchTrips, createBooking } = useApp();
+  const { trips, tripsLoading, searchTrips, createBooking } = useApp();
   const [departure, setDeparture] = useState('');
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
@@ -129,14 +129,13 @@ export default function Home() {
     setBookingTrip(null);
   }, [bookingTrip, createBooking]);
 
-  // Auto-search on mount to show all trips
+  // Show all trips from context on mount
   useEffect(() => {
-    (async () => {
-      const allTrips = await searchTrips('', '', '');
-      setResults(Array.isArray(allTrips) ? allTrips : []);
+    if (trips.length > 0 || !tripsLoading) {
+      setResults(trips);
       setHasSearched(true);
-    })();
-  }, [searchTrips]);
+    }
+  }, [trips, tripsLoading]);
 
   return (
     <div className="animate-fade-in">

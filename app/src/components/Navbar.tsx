@@ -1,20 +1,20 @@
 import { NavLink, useLocation } from 'react-router';
-import { CarFront, Bell, Menu, X } from 'lucide-react';
+import { CarFront, Bell, Menu, X, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 
 const navLinks = [
   { to: '/', label: 'Rechercher' },
-  { to: '/reservations', label: 'Mes Réservations' },
-  { to: '/trips', label: 'Mes Trajets' },
-  { to: '/alertes', label: 'Alertes' },
-  { to: '/profil', label: 'Profil' },
+  // These links only show for authenticated users
+  { to: '/reservations', label: 'Mes Réservations', auth: true },
+  { to: '/trips', label: 'Mes Trajets', auth: true },
+  { to: '/alertes', label: 'Alertes', auth: true },
+  { to: '/profil', label: 'Profil', auth: true },
 ];
 
 export default function Navbar() {
-  const { unreadCount, setPanelOpen, setAuthModal, isAuthenticated, currentUser } = useApp();
+  const { unreadCount, setPanelOpen, setAuthModal, setAuthMode, isAuthenticated, currentUser, logout } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const location = useLocation();
 
   return (
@@ -28,7 +28,9 @@ export default function Navbar() {
 
         {/* Desktop Nav Links */}
         <div className="hidden lg:flex items-center gap-1">
-          {navLinks.map(link => (
+          {navLinks
+            .filter(link => !link.auth || isAuthenticated)
+            .map(link => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -64,26 +66,41 @@ export default function Navbar() {
           </button>
 
           {/* Desktop Auth Buttons */}
-          <div className="hidden sm:flex items-center gap-2">
-            <button 
-              onClick={() => {
-                setAuthMode('login');
-                setAuthModal(true);
-              }}
-              className="btn-ghost text-sm py-2.5 px-4"
-            >
-              Connexion
-            </button>
-            <button 
-              onClick={() => {
-                setAuthMode('register');
-                setAuthModal(true);
-              }}
-              className="btn-primary text-sm py-2.5 px-4 gradient-orange"
-            >
-              S'inscrire
-            </button>
-          </div>
+          {!isAuthenticated ? (
+            <div className="hidden sm:flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  setAuthMode('login');
+                  setAuthModal(true);
+                }}
+                className="btn-ghost text-sm py-2.5 px-4"
+              >
+                Connexion
+              </button>
+              <button 
+                onClick={() => {
+                  setAuthMode('register');
+                  setAuthModal(true);
+                }}
+                className="btn-primary text-sm py-2.5 px-4 gradient-orange"
+              >
+                S'inscrire
+              </button>
+            </div>
+          ) : (
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-sm text-covoit-text-secondary">
+                {currentUser?.name}
+              </span>
+              <button
+                onClick={() => logout()}
+                className="btn-ghost text-sm py-2.5 px-4 flex items-center gap-2"
+              >
+                <LogOut size={16} />
+                Déconnexion
+              </button>
+            </div>
+          )}
 
           {/* Mobile Menu Toggle */}
           <button
@@ -99,7 +116,9 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="lg:hidden glass-panel border-t border-white/[0.06] animate-fade-in">
           <div className="px-4 py-3 space-y-1">
-            {navLinks.map(link => (
+            {navLinks
+              .filter(link => !link.auth || isAuthenticated)
+              .map(link => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -116,26 +135,41 @@ export default function Navbar() {
               </NavLink>
             ))}
             <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
-              <button 
-                onClick={() => {
-                  setAuthMode('login');
-                  setAuthModal(true);
-                  setMobileMenuOpen(false);
-                }}
-                className="btn-ghost text-sm py-2.5 flex-1"
-              >
-                Connexion
-              </button>
-              <button 
-                onClick={() => {
-                  setAuthMode('register');
-                  setAuthModal(true);
-                  setMobileMenuOpen(false);
-                }}
-                className="btn-primary text-sm py-2.5 flex-1 gradient-orange"
-              >
-                S'inscrire
-              </button>
+              {!isAuthenticated ? (
+                <>
+                  <button 
+                    onClick={() => {
+                      setAuthMode('login');
+                      setAuthModal(true);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="btn-ghost text-sm py-2.5 flex-1"
+                  >
+                    Connexion
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setAuthMode('register');
+                      setAuthModal(true);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="btn-primary text-sm py-2.5 flex-1 gradient-orange"
+                  >
+                    S'inscrire
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    logout();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="btn-ghost text-sm py-2.5 flex-1 flex items-center justify-center gap-2"
+                >
+                  <LogOut size={16} />
+                  Déconnexion
+                </button>
+              )}
             </div>
           </div>
         </div>

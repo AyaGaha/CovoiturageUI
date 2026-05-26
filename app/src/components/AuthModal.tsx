@@ -1,16 +1,35 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import Modal from './Modal';
-import { CarFront } from 'lucide-react';
+import { CarFront, Check, X } from 'lucide-react';
+
+// Password validation rules
+const getPasswordValidation = (pwd: string) => {
+  return {
+    length: pwd.length >= 8,
+    uppercase: /[A-Z]/.test(pwd),
+    lowercase: /[a-z]/.test(pwd),
+    number: /\d/.test(pwd),
+    special: /[@$!%*?&]/.test(pwd),
+  };
+};
+
+const isPasswordValid = (pwd: string) => {
+  const validation = getPasswordValidation(pwd);
+  return Object.values(validation).every(v => v);
+};
 
 export default function AuthModal() {
-  const { authModal, setAuthModal, login, register, authLoading } = useApp();
-  const [isLogin, setIsLogin] = useState(true);
+  const { authModal, setAuthModal, login, register, authLoading, authMode, setAuthMode } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
+  const [showPasswordHelp, setShowPasswordHelp] = useState(false);
+  const passwordValidation = getPasswordValidation(password);
+
+  const isLogin = authMode === 'login';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,6 +119,9 @@ export default function AuthModal() {
               className="input-field"
               disabled={authLoading}
             />
+            <p className="text-xs text-covoit-text-secondary mt-1.5">
+              Format Tunisien: +21620123456, 020123456, ou 20123456
+            </p>
           </div>
         )}
 
@@ -110,18 +132,84 @@ export default function AuthModal() {
           <input
             type="password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
+            onChange={e => {
+              setPassword(e.target.value);
+              setShowPasswordHelp(true);
+            }}
+            onBlur={() => {
+              if (!password) setShowPasswordHelp(false);
+            }}
             placeholder="••••••••"
             className="input-field"
             required
             disabled={authLoading}
           />
+          
+          {!isLogin && showPasswordHelp && (
+            <div className="mt-2 p-3 bg-covoit-bg-secondary/50 rounded-lg space-y-1.5">
+              <p className="text-xs text-covoit-text-secondary font-medium mb-2">
+                Le mot de passe doit contenir:
+              </p>
+              <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2">
+                  {passwordValidation.length ? (
+                    <Check size={14} className="text-green-400" />
+                  ) : (
+                    <X size={14} className="text-red-400" />
+                  )}
+                  <span className={passwordValidation.length ? 'text-green-400' : 'text-red-400'}>
+                    Au moins 8 caractères
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {passwordValidation.uppercase ? (
+                    <Check size={14} className="text-green-400" />
+                  ) : (
+                    <X size={14} className="text-red-400" />
+                  )}
+                  <span className={passwordValidation.uppercase ? 'text-green-400' : 'text-red-400'}>
+                    Une lettre majuscule (A-Z)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {passwordValidation.lowercase ? (
+                    <Check size={14} className="text-green-400" />
+                  ) : (
+                    <X size={14} className="text-red-400" />
+                  )}
+                  <span className={passwordValidation.lowercase ? 'text-green-400' : 'text-red-400'}>
+                    Une lettre minuscule (a-z)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {passwordValidation.number ? (
+                    <Check size={14} className="text-green-400" />
+                  ) : (
+                    <X size={14} className="text-red-400" />
+                  )}
+                  <span className={passwordValidation.number ? 'text-green-400' : 'text-red-400'}>
+                    Un chiffre (0-9)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {passwordValidation.special ? (
+                    <Check size={14} className="text-green-400" />
+                  ) : (
+                    <X size={14} className="text-red-400" />
+                  )}
+                  <span className={passwordValidation.special ? 'text-green-400' : 'text-red-400'}>
+                    Un caractère spécial (@$!%*?&)
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <button 
           type="submit" 
           className="w-full btn-primary py-3 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={authLoading}
+          disabled={authLoading || (!isLogin && !isPasswordValid(password))}
         >
           {authLoading ? 'Chargement...' : (isLogin ? 'Se connecter' : 'Créer mon compte')}
         </button>
@@ -130,7 +218,7 @@ export default function AuthModal() {
       <p className="text-center text-sm text-covoit-text-secondary mt-5">
         {isLogin ? "Vous n'avez pas de compte ?" : 'Vous avez déjà un compte ?'}{' '}
         <button
-          onClick={() => setIsLogin(!isLogin)}
+          onClick={() => setAuthMode(isLogin ? 'register' : 'login')}
           className="text-covoit-orange hover:underline font-medium"
         >
           {isLogin ? "S'inscrire" : 'Se connecter'}

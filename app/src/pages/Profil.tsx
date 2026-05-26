@@ -3,11 +3,12 @@ import { Mail, Phone, Star, Save, Lock, User, Shield } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import UserAvatar from '@/components/UserAvatar';
 import StarRating from '@/components/StarRating';
-import { mockReviews } from '@/data/mockData';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-function ReviewCard({ review }: { review: typeof mockReviews[0] }) {
+import type { Review } from '@/types';
+
+function ReviewCard({ review }: { review: Review }) {
   return (
     <div className="card-surface p-5">
       <div className="flex items-start justify-between mb-3">
@@ -37,7 +38,19 @@ function ReviewCard({ review }: { review: typeof mockReviews[0] }) {
 }
 
 export default function Profil() {
-  const { currentUser, updateProfile } = useApp();
+  const { currentUser, updateProfile, reviews } = useApp();
+
+  if (!currentUser) {
+    return (
+      <div className="max-w-[800px] mx-auto px-6 py-10 animate-fade-in">
+        <h1 className="text-3xl font-semibold text-white mb-8">Mon Profil</h1>
+        <div className="card-surface p-6 text-center">
+          <p className="text-covoit-text-secondary">Veuillez vous connecter pour accéder à votre profil.</p>
+        </div>
+      </div>
+    );
+  }
+
   const [name, setName] = useState(currentUser.name);
   const [email, setEmail] = useState(currentUser.email);
   const [phone, setPhone] = useState(currentUser.phone);
@@ -201,11 +214,11 @@ export default function Profil() {
               <Star size={18} className="text-covoit-orange" />
               Avis reçus
             </h3>
-            {mockReviews.length === 0 ? (
+            {reviews.length === 0 ? (
               <p className="text-sm text-covoit-text-secondary">Aucun avis pour le moment</p>
             ) : (
               <div className="space-y-4">
-                {mockReviews.map(review => (
+                {reviews.map(review => (
                   <ReviewCard key={review.id} review={review} />
                 ))}
               </div>

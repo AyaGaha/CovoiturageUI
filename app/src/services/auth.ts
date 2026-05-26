@@ -3,7 +3,7 @@
  * Handles user registration, login, logout, and token refresh
  */
 
-import httpClient from '@/lib/http-client';
+import { httpClient } from '@/lib/http-client';
 import { apiConfig } from '@/config/api';
 
 export interface RegisterRequest {
