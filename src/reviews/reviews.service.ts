@@ -216,8 +216,8 @@ export class ReviewsService {
 
     const earned: Badge[] = [];
     if (avg > 4.8) earned.push(Badge.EXCELLENT_DRIVER);
-    if (tagRate('CLEAN_CAR') >= 1) earned.push(Badge.CLEAN_CAR);
-    if (tagRate('PUNCTUAL') >= 1) earned.push(Badge.ALWAYS_ON_TIME);
+    if (tagRate('CLEAN_CAR') >= 80) earned.push(Badge.CLEAN_CAR);
+    if (tagRate('PUNCTUAL') >= 80) earned.push(Badge.ALWAYS_ON_TIME);
     if (totalTrips >= 100 && avg > 4.5) earned.push(Badge.SAFE_DRIVER);
     if (tagRate('FRIENDLY') >= 80) earned.push(Badge.FRIENDLY);
     if (totalReviews >= 50) earned.push(Badge.POPULAR);
