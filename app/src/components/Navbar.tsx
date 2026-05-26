@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { NavLink, useLocation } from 'react-router';
+=======
+import { NavLink, useLocation, useNavigate } from 'react-router';
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
 import { CarFront, Bell, Menu, X, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
@@ -12,10 +16,20 @@ const navLinks = [
   { to: '/profil', label: 'Profil', auth: true },
 ];
 
+// Links shown only when authenticated
+const authNavLinks = navLinks.slice(1); // All except 'Rechercher'
+
 export default function Navbar() {
+<<<<<<< HEAD
   const { unreadCount, setPanelOpen, setAuthModal, setAuthMode, isAuthenticated, currentUser, logout } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+=======
+  const { unreadCount, setPanelOpen, setAuthModal, setAuthModalMode, isAuthenticated, currentUser, logout } = useApp();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
   const location = useLocation();
+  const navigate = useNavigate();
 
   return (
     <nav className="fixed top-0 left-0 right-0 h-[72px] glass-navbar z-50">
@@ -23,14 +37,18 @@ export default function Navbar() {
         {/* Logo */}
         <NavLink to="/" className="flex items-center gap-2 shrink-0">
           <CarFront size={24} className="text-covoit-orange" />
-          <span className="text-xl font-semibold text-white">Covoiturage</span>
+          <span className="text-xl font-semibold text-white">Wassalni</span>
         </NavLink>
 
         {/* Desktop Nav Links */}
         <div className="hidden lg:flex items-center gap-1">
+<<<<<<< HEAD
           {navLinks
             .filter(link => !link.auth || isAuthenticated)
             .map(link => (
+=======
+          {(isAuthenticated ? navLinks : [navLinks[0]]).map(link => (
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
             <NavLink
               key={link.to}
               to={link.to}
@@ -66,11 +84,19 @@ export default function Navbar() {
           </button>
 
           {/* Desktop Auth Buttons */}
+<<<<<<< HEAD
           {!isAuthenticated ? (
             <div className="hidden sm:flex items-center gap-2">
               <button 
                 onClick={() => {
                   setAuthMode('login');
+=======
+          {!isAuthenticated && (
+            <div className="hidden sm:flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  setAuthModalMode('login');
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
                   setAuthModal(true);
                 }}
                 className="btn-ghost text-sm py-2.5 px-4"
@@ -79,7 +105,11 @@ export default function Navbar() {
               </button>
               <button 
                 onClick={() => {
+<<<<<<< HEAD
                   setAuthMode('register');
+=======
+                  setAuthModalMode('register');
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
                   setAuthModal(true);
                 }}
                 className="btn-primary text-sm py-2.5 px-4 gradient-orange"
@@ -87,6 +117,7 @@ export default function Navbar() {
                 S'inscrire
               </button>
             </div>
+<<<<<<< HEAD
           ) : (
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-sm text-covoit-text-secondary">
@@ -99,6 +130,34 @@ export default function Navbar() {
                 <LogOut size={16} />
                 Déconnexion
               </button>
+=======
+          )}
+
+          {/* User Menu */}
+          {isAuthenticated && (
+            <div className="relative hidden sm:flex items-center">
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="px-4 py-2 rounded-lg hover:bg-white/10 transition-colors text-covoit-text-secondary hover:text-white text-sm font-medium"
+              >
+                {currentUser?.name || 'Utilisateur'}
+              </button>
+              {userMenuOpen && (
+                <div className="absolute top-full right-0 mt-1 glass-panel rounded-lg shadow-lg min-w-[200px] py-2 z-50">
+                  <button
+                    onClick={() => {
+                      logout();
+                      setUserMenuOpen(false);
+                      navigate('/');
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-covoit-text-secondary hover:text-white hover:bg-white/5 transition-colors flex items-center gap-2"
+                  >
+                    <LogOut size={16} />
+                    Déconnexion
+                  </button>
+                </div>
+              )}
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
             </div>
           )}
 
@@ -116,9 +175,13 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="lg:hidden glass-panel border-t border-white/[0.06] animate-fade-in">
           <div className="px-4 py-3 space-y-1">
+<<<<<<< HEAD
             {navLinks
               .filter(link => !link.auth || isAuthenticated)
               .map(link => (
+=======
+            {(isAuthenticated ? navLinks : [navLinks[0]]).map(link => (
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -134,6 +197,7 @@ export default function Navbar() {
                 {link.label}
               </NavLink>
             ))}
+<<<<<<< HEAD
             <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
               {!isAuthenticated ? (
                 <>
@@ -159,18 +223,57 @@ export default function Navbar() {
                   </button>
                 </>
               ) : (
+=======
+            {!isAuthenticated && (
+              <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
+                <button 
+                  onClick={() => {
+                    setAuthModalMode('login');
+                    setAuthModal(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="btn-ghost text-sm py-2.5 flex-1"
+                >
+                  Connexion
+                </button>
+                <button 
+                  onClick={() => {
+                    setAuthModalMode('register');
+                    setAuthModal(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="btn-primary text-sm py-2.5 flex-1 gradient-orange"
+                >
+                  S'inscrire
+                </button>
+              </div>
+            )}
+            {isAuthenticated && (
+              <div className="pt-2 border-t border-white/[0.06] mt-2">
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
                 <button
                   onClick={() => {
                     logout();
                     setMobileMenuOpen(false);
+<<<<<<< HEAD
                   }}
                   className="btn-ghost text-sm py-2.5 flex-1 flex items-center justify-center gap-2"
+=======
+                    navigate('/');
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-covoit-text-secondary hover:text-white hover:bg-white/5 transition-colors rounded-lg flex items-center gap-2"
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
                 >
                   <LogOut size={16} />
                   Déconnexion
                 </button>
+<<<<<<< HEAD
               )}
             </div>
+=======
+              </div>
+            )}
+>>>>>>> deca3081a0cfd208db38e6aa8425470e94ddb2a3
           </div>
         </div>
       )}

@@ -10,11 +10,16 @@ import {
   Plus,
   MapPin,
   ArrowRight,
+  Edit,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import UserAvatar from '@/components/UserAvatar';
 import EmptyState from '@/components/EmptyState';
+import CreateTripModal from '@/components/CreateTripModal';
+import EditTripModal from '@/components/EditTripModal';
 import type { Trip } from '@/types';
+import type { CreateTripRequest, UpdateTripRequest } from '@/services/trips';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -108,7 +113,7 @@ function TripRequestsPanel({ tripId }: { tripId: number }) {
   );
 }
 
-function DriverTripCard({ trip }: { trip: Trip }) {
+function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; onEdit: (trip: Trip) => void; onDelete: (tripId: number) => void; isDeleting: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const availableSeats = trip.seats - trip.seatsBooked;
 
@@ -122,7 +127,7 @@ function DriverTripCard({ trip }: { trip: Trip }) {
   return (
     <div className="card-surface p-5">
       {/* Trip Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
         <div className="flex-1">
           {/* Route */}
           <div className="flex items-center gap-2 mb-2">
@@ -151,8 +156,28 @@ function DriverTripCard({ trip }: { trip: Trip }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <p className="text-lg font-bold text-covoit-orange">{trip.price} TND</p>
+          {trip.status === 'active' && (
+            <button
+              onClick={() => onEdit(trip)}
+              disabled={isDeleting}
+              className="p-2 rounded-lg bg-covoit-bg-tertiary text-covoit-orange hover:bg-covoit-orange/10 transition-colors disabled:opacity-50"
+              title="Modifier le trajet"
+            >
+              <Edit size={16} />
+            </button>
+          )}
+          {trip.status === 'active' && (
+            <button
+              onClick={() => onDelete(trip.id)}
+              disabled={isDeleting}
+              className="p-2 rounded-lg bg-covoit-bg-tertiary text-covoit-error hover:bg-covoit-error/10 transition-colors disabled:opacity-50"
+              title="Annuler le trajet"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
           {trip.status === 'active' && (
             <button
               onClick={() => setExpanded(!expanded)}
@@ -182,7 +207,50 @@ function DriverTripCard({ trip }: { trip: Trip }) {
 }
 
 export default function Trips() {
-  const { driverTrips } = useApp();
+  const { driverTrips, createTrip, updateTrip, cancelTrip } = useApp();
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
+
+  const handleCreateTrip = async (data: CreateTripRequest) => {
+    setIsLoading(true);
+    try {
+      await createTrip(data);
+      setCreateModalOpen(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditTrip = (trip: Trip) => {
+    setSelectedTrip(trip);
+    setEditModalOpen(true);
+  };
+
+  const handleUpdateTrip = async (tripId: number, data: UpdateTripRequest) => {
+    setIsLoading(true);
+    try {
+      await updateTrip(tripId, data);
+      setEditModalOpen(false);
+      setSelectedTrip(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteTrip = async (tripId: number) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir annuler ce trajet ? Cette action est irréversible.')) {
+      return;
+    }
+    setIsDeletingId(tripId);
+    try {
+      await cancelTrip(tripId);
+    } finally {
+      setIsDeletingId(null);
+    }
+  };
 
   const stats = {
     total: driverTrips.length,
@@ -198,11 +266,32 @@ export default function Trips() {
           <h1 className="text-3xl font-semibold text-white mb-2">Mes Trajets</h1>
           <p className="text-covoit-text-secondary">Gérez vos trajets et les demandes de réservation</p>
         </div>
-        <button className="btn-primary flex items-center gap-2 py-3 px-5 self-start">
+        <button
+          onClick={() => setCreateModalOpen(true)}
+          className="btn-primary flex items-center gap-2 py-3 px-5 self-start"
+        >
           <Plus size={18} />
           Créer un trajet
         </button>
       </div>
+
+      <CreateTripModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSubmit={handleCreateTrip}
+        isLoading={isLoading}
+      />
+
+      <EditTripModal
+        open={editModalOpen}
+        trip={selectedTrip}
+        onClose={() => {
+          setEditModalOpen(false);
+          setSelectedTrip(null);
+        }}
+        onSubmit={handleUpdateTrip}
+        isLoading={isLoading}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -218,12 +307,18 @@ export default function Trips() {
           icon={Route}
           title="Vous n'avez créé aucun trajet"
           description="Créez votre premier trajet pour commencer à recevoir des réservations"
-          action={{ label: 'Créer un trajet', onClick: () => {} }}
+          action={{ label: 'Créer un trajet', onClick: () => setCreateModalOpen(true) }}
         />
       ) : (
         <div className="space-y-4">
           {driverTrips.map(trip => (
-            <DriverTripCard key={trip.id} trip={trip} />
+            <DriverTripCard
+              key={trip.id}
+              trip={trip}
+              onEdit={handleEditTrip}
+              onDelete={handleDeleteTrip}
+              isDeleting={isDeletingId === trip.id}
+            />
           ))}
         </div>
       )}

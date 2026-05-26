@@ -1,14 +1,15 @@
 import { Star } from 'lucide-react';
 
 interface StarRatingProps {
-  rating: number;
+  rating?: number;
   showNumber?: boolean;
   size?: number;
 }
 
-export default function StarRating({ rating, showNumber = false, size = 16 }: StarRatingProps) {
-  const fullStars = Math.floor(rating);
-  const hasHalf = rating - fullStars >= 0.3;
+export default function StarRating({ rating = 0, showNumber = false, size = 16 }: StarRatingProps) {
+  const ratingValue = rating ?? 0;
+  const fullStars = Math.floor(ratingValue);
+  const hasHalf = ratingValue - fullStars >= 0.3;
   const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
 
   return (
@@ -30,7 +31,7 @@ export default function StarRating({ rating, showNumber = false, size = 16 }: St
         ))}
       </div>
       {showNumber && (
-        <span className="text-sm text-covoit-text-secondary ml-1">{rating.toFixed(1)}</span>
+        <span className="text-sm text-covoit-text-secondary ml-1">{ratingValue.toFixed(1)}</span>
       )}
     </div>
   );

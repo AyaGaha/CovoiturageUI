@@ -60,13 +60,21 @@ export const authService = {
    * Login user
    */
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await httpClient.post(apiConfig.endpoints.auth.login, data);
-    if (response.data.accessToken && response.data.refreshToken) {
-      httpClient.setAuthToken(response.data.accessToken);
-      httpClient.setRefreshToken(response.data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+    console.log('🔑 [authService] POST /auth/login with email:', data.email);
+    try {
+      const response = await httpClient.post(apiConfig.endpoints.auth.login, data);
+      console.log('✅ [authService] Login response received:', response.data);
+      if (response.data.accessToken && response.data.refreshToken) {
+        console.log('🔑 [authService] Setting tokens...');
+        httpClient.setAuthToken(response.data.accessToken);
+        httpClient.setRefreshToken(response.data.refreshToken);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      }
+      return response.data;
+    } catch (error) {
+      console.error('❌ [authService] Login failed:', error);
+      throw error;
     }
-    return response.data;
   },
 
   /**

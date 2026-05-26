@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import Modal from './Modal';
 import { CarFront, Check, X } from 'lucide-react';
@@ -19,8 +19,19 @@ const isPasswordValid = (pwd: string) => {
   return Object.values(validation).every(v => v);
 };
 
+// Debug logging helper - saves to localStorage
+const debugLog = (message: string, data?: any) => {
+  const fullMessage = data ? `${message} ${JSON.stringify(data)}` : message;
+  console.log(fullMessage);
+  // Save to localStorage
+  const logs = JSON.parse(localStorage.getItem('authDebugLogs') || '[]');
+  logs.push({ time: new Date().toLocaleTimeString(), msg: fullMessage });
+  localStorage.setItem('authDebugLogs', JSON.stringify(logs.slice(-50))); // Keep last 50
+};
+
 export default function AuthModal() {
   const { authModal, setAuthModal, login, register, authLoading, authMode, setAuthMode } = useApp();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -31,28 +42,109 @@ export default function AuthModal() {
 
   const isLogin = authMode === 'login';
 
+  // On mount, restore error state from localStorage (in case of page reload)
+  useEffect(() => {
+    const savedError = localStorage.getItem('authModalError');
+    const savedEmail = localStorage.getItem('authModalEmail');
+    const savedPassword = localStorage.getItem('authModalPassword');
+    const savedName = localStorage.getItem('authModalName');
+    const savedPhone = localStorage.getItem('authModalPhone');
+    
+    if (savedError) {
+      debugLog('📝 [AuthModal] Restoring error state from localStorage: ' + savedError);
+      setError(savedError);
+    }
+    if (savedEmail) setEmail(savedEmail);
+    if (savedPassword) setPassword(savedPassword);
+    if (savedName) setName(savedName);
+    if (savedPhone) setPhone(savedPhone);
+    
+    // Show saved debug logs from localStorage
+    const savedLogs = JSON.parse(localStorage.getItem('authDebugLogs') || '[]');
+    if (savedLogs.length > 0) {
+      console.log('📋 [AuthModal] Saved debug logs from localStorage:');
+      savedLogs.forEach((log: any) => console.log(`[${log.time}] ${log.msg}`));
+    }
+  }, []);
+
+  // Log modal state changes
+  useEffect(() => {
+    debugLog('📱 [AuthModal] Modal state changed - open:', { authModal, error });
+  }, [authModal, error]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    debugLog('📝 [AuthModal] handleSubmit called - Mode:', isLogin ? 'LOGIN' : 'REGISTER');
     setError('');
     
     try {
+      debugLog('🔐 [AuthModal] Attempting login with email:', email);
       if (isLogin) {
         await login(email, password);
+        debugLog('✅ [AuthModal] Login successful! Clearing form...');
+        setEmail('');
+        setPassword('');
       } else {
+        debugLog('📋 [AuthModal] Attempting register with email:', email);
         await register(name, email, password, phone);
+        debugLog('✅ [AuthModal] Register successful! Clearing form...');
+        setName('');
+        setEmail('');
+        setPassword('');
+        setPhone('');
       }
-      // Modal will close automatically via context
-      setEmail('');
-      setPassword('');
-      setName('');
-      setPhone('');
     } catch (err: any) {
-      setError(err.message || 'Une erreur est survenue');
+      debugLog('❌ [AuthModal] Error caught in handleSubmit:', err.message);
+      debugLog('❌ [AuthModal] Error response:', err.response?.data);
+      
+      // Extract error message from backend response - PRIORITY ORDER
+      let errorMessage = 'Email ou mot de passe incorrect';
+      
+      // Priority 1: error.response.data.message (from backend)
+      if (err.response?.data?.message) {
+        debugLog('✅ [AuthModal] Found error message in response.data.message:', err.response.data.message);
+        errorMessage = err.response.data.message;
+      } 
+      // Priority 2: error.response.data.error (some backends use this)
+      else if (err.response?.data?.error) {
+        debugLog('✅ [AuthModal] Found error message in response.data.error:', err.response.data.error);
+        errorMessage = err.response.data.error;
+      }
+      // Priority 3: error.message
+      else if (err.message) {
+        debugLog('✅ [AuthModal] Using error.message:', err.message);
+        errorMessage = err.message;
+      }
+      
+      console.log('⚠️ [AuthModal] Final error message to display:', errorMessage);
+      console.log('⚠️ [AuthModal] Calling setError() with:', errorMessage);
+      setError(errorMessage);
+      // Persist error to localStorage in case of page reload
+      localStorage.setItem('authModalError', errorMessage);
+      localStorage.setItem('authModalEmail', email);
+      localStorage.setItem('authModalPassword', password);
+      localStorage.setItem('authModalName', name);
+      localStorage.setItem('authModalPhone', phone);
+      debugLog('⚠️ [AuthModal] Error persisted to localStorage');
+      console.log('⚠️ [AuthModal] After setError, error state should be:', errorMessage);
     }
   };
 
   return (
-    <Modal open={authModal} onClose={() => setAuthModal(false)} maxWidth="420px">
+    <Modal 
+      open={authModal} 
+      onClose={() => {
+        debugLog('🔴 [AuthModal] onClose called', { errorState: error, shouldClose: !error });
+        if (!error) {
+          debugLog('🔴 [AuthModal] No error, closing modal');
+          setAuthModal(false);
+        } else {
+          debugLog('🔴 [AuthModal] Error present, NOT closing modal');
+        }
+      }} 
+      maxWidth="420px" 
+      closeOnEscape={!error}
+    >
       <div className="text-center mb-6">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl gradient-orange mb-3">
           <CarFront size={24} className="text-white" />
@@ -63,14 +155,23 @@ export default function AuthModal() {
         <p className="text-sm text-covoit-text-secondary mt-1">
           {isLogin
             ? 'Connectez-vous pour accéder à votre compte'
-            : 'Rejoignez la communauté Covoiturage'}
+            : 'Rejoignez la communauté Wassalni'}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <p className="text-sm text-red-400">{error}</p>
+          <div className="p-4 bg-red-500/15 border border-red-500/40 rounded-lg flex items-start justify-between">
+            <div>
+              <p className="text-sm text-red-300">{error}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              className="text-red-400 hover:text-red-300 font-medium text-sm ml-2"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -218,6 +319,7 @@ export default function AuthModal() {
       <p className="text-center text-sm text-covoit-text-secondary mt-5">
         {isLogin ? "Vous n'avez pas de compte ?" : 'Vous avez déjà un compte ?'}{' '}
         <button
+          type="button"
           onClick={() => setAuthMode(isLogin ? 'register' : 'login')}
           className="text-covoit-orange hover:underline font-medium"
         >

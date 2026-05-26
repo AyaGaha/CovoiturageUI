@@ -334,32 +334,7 @@ export const mockAlerts: Alert[] = [
   },
 ];
 
-export const mockNotifications: Notification[] = [
-  {
-    id: 1,
-    type: 'success',
-    message: 'Réservation confirmée',
-    details: 'Trajet Tunis → Nabeul, 1er Juin 2026',
-    read: false,
-    createdAt: '2026-05-26T09:30:00.000Z',
-  },
-  {
-    id: 2,
-    type: 'error',
-    message: 'Trajet annulé',
-    details: 'Tunis → Sfax, 4 Juin 2026',
-    read: false,
-    createdAt: '2026-05-26T08:00:00.000Z',
-  },
-  {
-    id: 3,
-    type: 'info',
-    message: 'Nouveau trajet correspond à votre alerte',
-    details: 'Tunis → Nabeul, 5 Juin 2026 à 18h00',
-    read: false,
-    createdAt: '2026-05-26T07:00:00.000Z',
-  },
-];
+export const mockNotifications: Notification[] = [];
 
 export const mockReviews: Review[] = [
   {

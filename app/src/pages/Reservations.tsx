@@ -26,7 +26,7 @@ export default function Reservations() {
         <p className="text-covoit-text-secondary">
           {bookings.length > 0
             ? `${bookings.length} réservation${bookings.length > 1 ? 's' : ''}`
-            : 'Gérez vos réservations de covoiturage'}
+            : 'Gérez vos réservations Wassalni'}
         </p>
       </div>
 
