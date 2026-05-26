@@ -9,34 +9,34 @@ import {
 } from 'class-validator';
 
 export class RegisterDto {
-  @IsString({ message: 'Name must be a string' })
-  @IsNotEmpty({ message: 'Name is required' })
-  @MinLength(2, { message: 'Name must be at least 2 characters' })
-  @MaxLength(50, { message: 'Name must not exceed 50 characters' })
+  @IsString({ message: 'Le nom doit être une chaîne de caractères' })
+  @IsNotEmpty({ message: 'Le nom est obligatoire' })
+  @MinLength(2, { message: 'Le nom doit contenir au moins 2 caractères' })
+  @MaxLength(50, { message: 'Le nom ne peut pas dépasser 50 caractères' })
   name: string;
 
-  @IsEmail({}, { message: 'Invalid email format. Please provide a valid email address' })
-  @IsNotEmpty({ message: 'Email is required' })
+  @IsEmail({}, { message: 'Format email invalide. Veuillez fournir une adresse email valide' })
+  @IsNotEmpty({ message: 'L\'email est obligatoire' })
   email: string;
 
-  @IsString({ message: 'Password must be a string' })
-  @IsNotEmpty({ message: 'Password is required' })
-  @MinLength(8, { message: 'Password must be at least 8 characters long' })
-  @MaxLength(128, { message: 'Password must not exceed 128 characters' })
+  @IsString({ message: 'Le mot de passe doit être une chaîne de caractères' })
+  @IsNotEmpty({ message: 'Le mot de passe est obligatoire' })
+  @MinLength(8, { message: 'Le mot de passe doit contenir au moins 8 caractères' })
+  @MaxLength(128, { message: 'Le mot de passe ne peut pas dépasser 128 caractères' })
   @Matches(
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
     {
       message:
-        'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)',
+        'Le mot de passe doit contenir au moins une lettre majuscule, une lettre minuscule, un chiffre et un caractère spécial (@$!%*?&)',
     },
   )
   password: string;
 
   @IsOptional()
-  @IsString({ message: 'Phone must be a string' })
+  @IsString({ message: 'Le téléphone doit être une chaîne de caractères' })
   @Matches(/^(\+216|0)?[2459]\d{7}$/, {
     message:
-      'Phone number must be in Tunisian format (e.g., +216 20123456, 020123456, or 20123456)',
+      'Le numéro de téléphone doit être au format tunisien (ex: +216 20123456, 020123456, ou 20123456)',
   })
   phone?: string;
 

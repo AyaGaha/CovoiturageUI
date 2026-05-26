@@ -5,36 +5,36 @@ import { IsString, MinLength, MaxLength, IsOptional, Matches } from 'class-valid
 export class UpdateProfileInput {
   @Field({ nullable: true })
   @IsOptional()
-  @IsString({ message: 'Name must be a string' })
-  @MinLength(2, { message: 'Name must be at least 2 characters' })
-  @MaxLength(50, { message: 'Name must not exceed 50 characters' })
+  @IsString({ message: 'Le nom doit être une chaîne de caractères' })
+  @MinLength(2, { message: 'Le nom doit contenir au moins 2 caractères' })
+  @MaxLength(50, { message: 'Le nom ne peut pas dépasser 50 caractères' })
   name?: string;
 
   @Field({ nullable: true })
   @IsOptional()
-  @IsString({ message: 'Profile image must be a string' })
+  @IsString({ message: 'L\'image de profil doit être une chaîne de caractères' })
   profileImage?: string;
 
   @Field({ nullable: true })
   @IsOptional()
-  @IsString({ message: 'Phone must be a string' })
+  @IsString({ message: 'Le téléphone doit être une chaîne de caractères' })
   @Matches(/^(\+216|0)?[2459]\d{7}$/, {
     message:
-      'Phone number must be in Tunisian format (e.g., +216 20123456, 020123456, or 20123456)',
+      'Le numéro de téléphone doit être au format tunisien (ex: +216 20123456, 020123456, ou 20123456)',
   })
   phone?: string;
 
   @Field({ nullable: true })
   @IsOptional()
-  @IsString({ message: 'Emergency contact must be a string' })
+  @IsString({ message: 'Le contact d\'urgence doit être une chaîne de caractères' })
   emergencyContact?: string;
 
   @Field({ nullable: true })
   @IsOptional()
-  @IsString({ message: 'Emergency phone must be a string' })
+  @IsString({ message: 'Le numéro d\'urgence doit être une chaîne de caractères' })
   @Matches(/^(\+216|0)?[2459]\d{7}$/, {
     message:
-      'Emergency phone number must be in Tunisian format (e.g., +216 20123456, 020123456, or 20123456)',
+      'Le numéro de téléphone d\'urgence doit être au format tunisien (ex: +216 20123456, 020123456, ou 20123456)',
   })
   emergencyPhone?: string;
 }

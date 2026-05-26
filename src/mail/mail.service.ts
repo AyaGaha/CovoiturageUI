@@ -29,8 +29,8 @@ export class MailService {
 const htmlContent = `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; color: #333; line-height: 1.6;">
     
-    <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
-      <h1 style="margin: 0;">Bienvenue sur Covoiturage</h1>
+    <div style="background-color: #cf5a1c; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+      <h1 style="margin: 0;">Bienvenue sur Wassalni</h1>
     </div>
 
     <div style="padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
@@ -67,7 +67,7 @@ const htmlContent = `
 
       <p>
         Cordialement,<br>
-        <strong>L'équipe Covoiturage</strong>
+        <strong>L'équipe Wassalni</strong>
       </p>
 
     </div>

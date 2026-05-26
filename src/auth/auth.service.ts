@@ -41,7 +41,7 @@ export class AuthService {
     await this.saveRefreshToken(user.id, tokens.refreshToken);
 
     return {
-      message: 'User registered successfully',
+      message: 'Utilisateur enregistré avec succès',
       user: {
         id: user.id,
         name: user.name,
@@ -58,7 +58,7 @@ export class AuthService {
     // Find user
     const user = await this.usersService.findByEmail(email);
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Email ou mot de passe invalide');
     }
 
     // Validate password
@@ -67,7 +67,7 @@ export class AuthService {
       user.password,
     );
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Email ou mot de passe invalide');
     }
 
     // Generate tokens
@@ -77,7 +77,7 @@ export class AuthService {
     await this.saveRefreshToken(user.id, tokens.refreshToken);
 
     return {
-      message: 'Login successful',
+      message: 'Connexion réussie',
       user: {
         id: user.id,
         name: user.name,
@@ -91,14 +91,14 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET') || '';
     if (!refreshSecret) {
-      throw new UnauthorizedException('Refresh secret not configured');
+      throw new UnauthorizedException('Secret de refresh non configuré');
     }
 
     try {
       // Verify JWT signature
       jwt.verify(refreshToken, refreshSecret);
     } catch (error) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException('Refresh token invalide');
     }
 
     // Verify refresh token exists and is not revoked
@@ -110,18 +110,18 @@ export class AuthService {
     });
 
     if (!tokenRecord) {
-      throw new UnauthorizedException('Invalid or revoked refresh token');
+      throw new UnauthorizedException('Refresh token invalide ou révoqué');
     }
 
     // Check if token is expired (as backup)
     if (new Date() > tokenRecord.expiresAt) {
-      throw new UnauthorizedException('Refresh token expired');
+      throw new UnauthorizedException('Refresh token expiré');
     }
 
     // Get user
     const user = await this.usersService.findById(tokenRecord.userId);
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException('Utilisateur non trouvé');
     }
 
     // Generate new tokens
@@ -134,7 +134,7 @@ export class AuthService {
     await this.saveRefreshToken(user.id, newTokens.refreshToken);
 
     return {
-      message: 'Token refreshed successfully',
+      message: 'Token rafraîchi avec succès',
       ...newTokens,
     };
   }
@@ -145,7 +145,7 @@ export class AuthService {
     });
 
     if (!tokenRecord) {
-      throw new BadRequestException('Invalid refresh token');
+      throw new BadRequestException('Refresh token invalide');
     }
 
     // Revoke refresh token
@@ -153,7 +153,7 @@ export class AuthService {
       isRevoked: true,
     });
 
-    return { message: 'Logout successful' };
+    return { message: 'Déconnexion réussie' };
   }
 
   private generateTokens(userId: number, email: string) {

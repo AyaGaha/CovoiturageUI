@@ -40,7 +40,7 @@ export class AuthController {
     @CurrentUser() user: User,
   ) {
     if (!refreshTokenDto.refreshToken) {
-      throw new BadRequestException('Refresh token is required');
+      throw new BadRequestException('Refresh token obligatoire');
     }
     return this.authService.logout(refreshTokenDto.refreshToken);
   }

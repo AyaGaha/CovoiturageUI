@@ -18,36 +18,35 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { User } from 'src/users/entities/user.entity';
 
 @Controller('trips')
-// @UseGuards(JwtAuthGuard)  // à activer qd auth mise en place
+@UseGuards(JwtAuthGuard)  
 export class TripsController {
   constructor(private readonly tripsService: TripsService) {}
 
   @Post()
-  create(@Body() dto: CreateTripDto) {
-    const driverId = 1; // ← remplace par req.user.id avec auth
+  create(@Body() dto: CreateTripDto, @CurrentUser() user: User) {
+    const driverId = user.id; 
     return this.tripsService.createTrip(driverId, dto);
   }
 
   @Put(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTripDto) {
-    const driverId = 1;
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTripDto, @CurrentUser() user: User) {
+    const driverId = user.id; 
     return this.tripsService.updateTrip(id, driverId, dto);
   }
 
   @Delete(':id')
-  cancel(@Param('id', ParseIntPipe) id: number) {
-    const driverId = 1;
+  cancel(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
+    const driverId = user.id;
     return this.tripsService.cancelTrip(id, driverId);
   }
 
   @Get('mine')
-  getMyTrips() {
-    const driverId = 1;
+  getMyTrips(@CurrentUser() user: User) {
+    const driverId = user.id;
     return this.tripsService.getMyTrips(driverId);
   }
 
   @Patch(':id/complete')
-  @UseGuards(JwtAuthGuard)
   completeTrip(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
     return this.tripsService.completeTrip(id, user.id);
   }

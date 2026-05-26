@@ -23,7 +23,7 @@ export class UsersService {
       where: { email },
     });
     if (existingUser) {
-      throw new ConflictException('Email already exists');
+      throw new ConflictException('Email déjà utilisé');
     }
 
     // Hash password
@@ -70,7 +70,7 @@ export class UsersService {
     // Find user first
     const user = await this.findById(userId);
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Utilisateur non trouvé');
     }
 
     // Update only the allowed fields

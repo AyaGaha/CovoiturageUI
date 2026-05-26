@@ -8,10 +8,17 @@ import { GqlJwtAuthGuard } from 'src/auth/guards/gql-jwt-auth.guard';
 import { UseGuards } from '@nestjs/common';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { User } from 'src/users/entities/user.entity';
+import { ResolveField, Parent } from '@nestjs/graphql';
+import { UserType } from 'src/users/graphql/user.type';
+import { DriverLoader } from './driver.loader';
+import { Trip } from './entities/trip.entity';
 
 @Resolver(() => TripType)
 export class TripsResolver {
-  constructor(private readonly tripsService: TripsService) {}
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly driverLoader: DriverLoader,
+  ) {}
 
 
   @Query(() => TripType)
@@ -19,6 +26,16 @@ export class TripsResolver {
     return this.tripsService.getTripById(id);
   }
 
+  @Query(() => TripStatsType)
+  @UseGuards(GqlJwtAuthGuard)
+  tripsStats(@CurrentUser() user: User) {
+    return this.tripsService.getTripsStats(user.id);
+  }
+
+  @Query(() => [TripType])
+  tripsByStatus(@Args('status') status: string) {
+    return this.tripsService.getTripsByStatus(status);
+  }
 
   @Query(() => [TripType])
   upcomingTrips(
@@ -28,13 +45,6 @@ export class TripsResolver {
     return this.tripsService.getUpcomingTrips(page, limit);
   }
 
-
-  @Query(() => [TripType])
-  tripsByStatus(@Args('status') status: string) {
-    return this.tripsService.getTripsByStatus(status);
-  }
-
-
   @Query(() => PaginatedTripsType)
     searchTrips(
       @Args('filters', { type: () => SearchTripsInput, nullable: true })
@@ -43,33 +53,16 @@ export class TripsResolver {
       return this.tripsService.searchTrips(filters ?? {});
     }
 
-
-
-  @Query(() => TripStatsType)
-  @UseGuards(GqlJwtAuthGuard)
-  tripsStats(@CurrentUser() user: User) {
-    return this.tripsService.getTripsStats(user.id);
-  }
-
-
-  @Query(() => [TripType])
-  tripsByDateRange(@Args('from') from: string, @Args('to') to: string) {
-    return this.tripsService.getTripsByDateRange(from, to);
-  }
-
-  @Query(() => [TripType])
-  cheapestTrips(
-    @Args('limit', { type: () => Int, defaultValue: 5 }) limit: number,
-  ) {
-    return this.tripsService.getCheapestTrips(limit);
-  }
-
-
   @Query(() => [TripType])
   tripsNearDate(
     @Args('date') date: string,
     @Args('rangeDays', { type: () => Int }) rangeDays: number,
   ) {
     return this.tripsService.tripsNearDate(date, rangeDays);
+  }
+
+  @ResolveField('driver', () => UserType, { nullable: true })
+  async resolveDriver(@Parent() trip: Trip) {
+    return this.driverLoader.loader.load(trip.driverId);
   }
 }
