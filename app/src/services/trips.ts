@@ -3,10 +3,10 @@
  * Handles trip creation, retrieval, updates, and search
  */
 
-import httpClient from '@/lib/http-client';
-import { apiConfig } from '@/config/api';
-import { executeGraphQL } from '@/lib/graphql-client';
-import type { Trip } from '@/types';
+import httpClient from "@/lib/http-client";
+import { apiConfig } from "@/config/api";
+import { executeGraphQL } from "@/lib/graphql-client";
+import type { Trip } from "@/types";
 
 export interface CreateTripRequest {
   departure: string;
@@ -22,6 +22,7 @@ export interface UpdateTripRequest {
   price?: number;
   seats?: number;
   description?: string;
+  status?: "active" | "cancelled" | "completed";
 }
 
 export interface TripFilters {
@@ -30,8 +31,8 @@ export interface TripFilters {
   date?: string;
   minSeats?: number;
   maxPrice?: number;
-  sortBy?: 'date' | 'price' | 'driverRating';
-  sortOrder?: 'ASC' | 'DESC';
+  sortBy?: "date" | "price" | "driverRating";
+  sortOrder?: "ASC" | "DESC";
   first?: number;
   after?: string;
 }
@@ -60,14 +61,20 @@ export const tripsService = {
    * Create a new trip
    */
   createTrip: async (data: CreateTripRequest): Promise<Trip> => {
-    const response = await httpClient.post(apiConfig.endpoints.trips.create, data);
+    const response = await httpClient.post(
+      apiConfig.endpoints.trips.create,
+      data,
+    );
     return response.data;
   },
 
   /**
    * Get all available trips (paginated)
    */
-  getTrips: async (page: number = 1, limit: number = 10): Promise<{ trips: Trip[]; total: number }> => {
+  getTrips: async (
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<{ trips: Trip[]; total: number }> => {
     const response = await httpClient.get(apiConfig.endpoints.trips.list, {
       params: { page, limit },
     });
@@ -94,7 +101,10 @@ export const tripsService = {
    * Update a trip
    */
   updateTrip: async (id: number, data: UpdateTripRequest): Promise<Trip> => {
-    const response = await httpClient.put(apiConfig.endpoints.trips.update(id), data);
+    const response = await httpClient.put(
+      apiConfig.endpoints.trips.update(id),
+      data,
+    );
     return response.data;
   },
 
@@ -102,25 +112,43 @@ export const tripsService = {
    * Cancel a trip
    */
   cancelTrip: async (id: number): Promise<Trip> => {
-    const response = await httpClient.delete(apiConfig.endpoints.trips.delete(id));
+    const response = await httpClient.delete(
+      apiConfig.endpoints.trips.delete(id),
+    );
     return response.data;
   },
 
-  
+  /**
+   * Complete a trip
+   */
+  completeTrip: async (id: number): Promise<Trip> => {
+    const response = await httpClient.put(
+      apiConfig.endpoints.trips.update(id),
+      {
+        status: "completed",
+      },
+    );
+    return response.data;
+  },
 
   /**
    * Get upcoming trips (paginated)
    */
-   getUpcomingTrips: async (page: number = 1, limit: number = 10): Promise<{ trips: Trip[]; total: number }> => {
+  getUpcomingTrips: async (
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<{ trips: Trip[]; total: number }> => {
     const response = await httpClient.get(apiConfig.endpoints.trips.list, {
-      params: { page, limit, status: 'active' },
+      params: { page, limit, status: "active" },
     });
     return response.data;
   },
   /**
    * Get trips by status (active, cancelled, completed)
    */
-  getTripsByStatus: async (status: 'active' | 'cancelled' | 'completed'): Promise<Trip[]> => {
+  getTripsByStatus: async (
+    status: "active" | "cancelled" | "completed",
+  ): Promise<Trip[]> => {
     const response = await httpClient.get(apiConfig.endpoints.trips.list, {
       params: { status },
     });
@@ -130,32 +158,35 @@ export const tripsService = {
   /**
    * Get trips near a specific date
    */
-  getTripsNearDate: async (date: string, rangeDays: number = 3): Promise<Trip[]> => {
+  getTripsNearDate: async (
+    date: string,
+    rangeDays: number = 3,
+  ): Promise<Trip[]> => {
     const response = await httpClient.get(apiConfig.endpoints.trips.list, {
       params: { date, rangeDays },
     });
     return response.data;
   },
-searchTrips: async (filters: TripFilters): Promise<SearchTripsResponse> => {
-  const normalizeDateFilter = (value?: string) => {
-    if (!value) return undefined;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00`;
-    return value;
-  };
+  searchTrips: async (filters: TripFilters): Promise<SearchTripsResponse> => {
+    const normalizeDateFilter = (value?: string) => {
+      if (!value) return undefined;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00`;
+      return value;
+    };
 
-  const graphqlFilters = {
-    departure: filters.departure || undefined,
-    destination: filters.destination || undefined,
-    date: normalizeDateFilter(filters.date),
-    minSeats: filters.minSeats || undefined,
-    maxPrice: filters.maxPrice || undefined,
-    sortBy: filters.sortBy || undefined,
-    sortOrder: filters.sortOrder || undefined,
-    first: filters.first || undefined,
-    after: filters.after || undefined,
-  };
+    const graphqlFilters = {
+      departure: filters.departure || undefined,
+      destination: filters.destination || undefined,
+      date: normalizeDateFilter(filters.date),
+      minSeats: filters.minSeats || undefined,
+      maxPrice: filters.maxPrice || undefined,
+      sortBy: filters.sortBy || undefined,
+      sortOrder: filters.sortOrder || undefined,
+      first: filters.first || undefined,
+      after: filters.after || undefined,
+    };
 
-  const query = `
+    const query = `
     query SearchTrips($filters: SearchTripsInput) {
       searchTrips(filters: $filters) {
         edges {
@@ -188,20 +219,23 @@ searchTrips: async (filters: TripFilters): Promise<SearchTripsResponse> => {
     }
   `;
 
-  const response = await httpClient.post(apiConfig.endpoints.graphql, {
-    query,
-    variables: { filters: graphqlFilters },
-  });
+    const response = await httpClient.post(apiConfig.endpoints.graphql, {
+      query,
+      variables: { filters: graphqlFilters },
+    });
 
-  if (response.data.errors) {
-    throw new Error(response.data.errors[0].message);
-  }
+    if (response.data.errors) {
+      throw new Error(response.data.errors[0].message);
+    }
 
-  return response.data.data.searchTrips;
-},
+    return response.data.data.searchTrips;
+  },
 
-searchTripsNearDate: async (date: string, rangeDays: number): Promise<Trip[]> => {
-  const query = `
+  searchTripsNearDate: async (
+    date: string,
+    rangeDays: number,
+  ): Promise<Trip[]> => {
+    const query = `
     query TripsNearDate($date: String!, $rangeDays: Int!) {
       tripsNearDate(date: $date, rangeDays: $rangeDays) {
         id
@@ -225,19 +259,18 @@ searchTripsNearDate: async (date: string, rangeDays: number): Promise<Trip[]> =>
     }
   `;
 
-  const response = await httpClient.post(apiConfig.endpoints.graphql, {
-    query,
-    variables: { date, rangeDays },
-  });
+    const response = await httpClient.post(apiConfig.endpoints.graphql, {
+      query,
+      variables: { date, rangeDays },
+    });
 
-  if (response.data.errors) {
-    throw new Error(response.data.errors[0].message);
-  }
+    if (response.data.errors) {
+      throw new Error(response.data.errors[0].message);
+    }
 
-  return response.data.data.tripsNearDate;
-},
+    return response.data.data.tripsNearDate;
+  },
 
-  
   /**
    * Get driver trip statistics
    */
@@ -251,7 +284,10 @@ searchTripsNearDate: async (date: string, rangeDays: number): Promise<Trip[]> =>
   /**
    * Get upcoming trips using GraphQL (pagination support)
    */
- getUpcomingTripsGraphQL: async (page: number = 1, limit: number = 10): Promise<Trip[]> => {
+  getUpcomingTripsGraphQL: async (
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<Trip[]> => {
     const query = `
       query GetUpcomingTrips($page: Int!, $limit: Int!) {
         upcomingTrips(page: $page, limit: $limit) {
@@ -274,23 +310,31 @@ searchTripsNearDate: async (date: string, rangeDays: number): Promise<Trip[]> =>
         }
       }
     `;
-    const result = await executeGraphQL<{ upcomingTrips: Trip[] }>({
-      query,
-      variables: { page, limit },
-    });
-    return result.upcomingTrips || [];
+    try {
+      console.log('🔍 Fetching upcoming trips with:', { page, limit });
+      const result = await executeGraphQL<{ upcomingTrips: Trip[] }>({
+        query,
+        variables: { page, limit },
+      });
+      console.log('✅ Upcoming trips result:', result);
+      return result.upcomingTrips || [];
+    } catch (error) {
+      console.error('❌ Failed to fetch upcoming trips:', error);
+      throw error;
+    }
   },
-
 
   /**
    * Search trips using GraphQL with advanced filters
    */
-  searchTripsGraphQL: async (filters: {
-    departure?: string;
-    destination?: string;
-    minSeats?: number;
-    maxPrice?: number;
-  } = {}): Promise<SearchTripsResponse> => {
+  searchTripsGraphQL: async (
+    filters: {
+      departure?: string;
+      destination?: string;
+      minSeats?: number;
+      maxPrice?: number;
+    } = {},
+  ): Promise<SearchTripsResponse> => {
     const query = `
       query SearchTrips($filters: SearchTripsFilter!) {
         searchTrips(filters: $filters) {

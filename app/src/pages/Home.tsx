@@ -360,16 +360,25 @@ export default function Home() {
 
   // Auto-search on mount to show all trips
   useEffect(() => {
+    let isMounted = true;
     (async () => {
       setIsSearching(true);
-      const { trips: allTrips, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips('', '', '', undefined, undefined, undefined, sortBy, sortOrder);
-      setResults(Array.isArray(allTrips) ? allTrips : []);
-      setHasNextPage(more);
-      setEndCursor(cursor);
-      setTotalCount(count);
-      setHasSearched(true);
-      setIsSearching(false);
+      try {
+        const { trips: allTrips, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips('', '', '', undefined, undefined, undefined, sortBy, sortOrder);
+        if (isMounted) {
+          setResults(Array.isArray(allTrips) ? allTrips : []);
+          setHasNextPage(more);
+          setEndCursor(cursor);
+          setTotalCount(count);
+          setHasSearched(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsSearching(false);
+        }
+      }
     })();
+    return () => { isMounted = false; };
   }, []); // run once on mount only
 
   const loading = isSearching || tripsLoading;

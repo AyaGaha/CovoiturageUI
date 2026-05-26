@@ -47,6 +47,7 @@ interface AppContextType {
   createTrip: (data: any) => Promise<Trip>;
   updateTrip: (tripId: number, data: any) => Promise<Trip>;
   cancelTrip: (tripId: number) => Promise<void>;
+  completeTrip: (tripId: number) => Promise<void>;
 
   // Bookings
   bookings: Booking[];
@@ -165,23 +166,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Load all trips on app mount (for search page)
-useEffect(() => {
+  useEffect(() => {
+    let isMounted = true;
     const loadPublicTrips = async () => {
       try {
         setTripsLoading(true);
         // Use GraphQL query for upcoming trips
         const trips = await tripsService.getUpcomingTripsGraphQL(1, 50);
-        setTrips(trips.length > 0 ? trips : mockTrips);
+        if (isMounted && trips && trips.length > 0) {
+          setTrips(trips);
+        }
       } catch (error) {
         console.error('Failed to load trips:', error);
-        // Fallback to mockData if API fails
-        setTrips(mockTrips);
+        if (isMounted) {
+          setTrips([]);
+        }
       } finally {
-        setTripsLoading(false);
+        if (isMounted) {
+          setTripsLoading(false);
+        }
       }
     };
 
     loadPublicTrips();
+    return () => { isMounted = false; };
   }, []);
 
   // Initialize authenticated user data
@@ -671,6 +679,25 @@ useEffect(() => {
     }
   }, [addNotification]);
 
+  const completeTrip = useCallback(async (tripId: number) => {
+    try {
+      await tripsService.completeTrip(tripId);
+      setDriverTripsState(prev => prev.map(t => (t.id === tripId ? { ...t, status: 'completed' } : t)));
+      addNotification({
+        type: 'success',
+        message: 'Trajet marqué comme terminé',
+      });
+    } catch (error: any) {
+      console.error('Complete trip failed:', error);
+      addNotification({
+        type: 'error',
+        message: 'Erreur lors de la finalisation du trajet',
+        details: error.response?.data?.message || 'Impossible de marquer le trajet comme terminé',
+      });
+      throw error;
+    }
+  }, [addNotification]);
+
 
   const updateProfile = useCallback(async (data: Partial<User>) => {
     try {
@@ -745,6 +772,7 @@ useEffect(() => {
         createTrip,
         updateTrip,
         cancelTrip,
+        completeTrip,
         bookings,
         bookingsLoading,
         createBooking,

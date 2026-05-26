@@ -113,7 +113,7 @@ function TripRequestsPanel({ tripId }: { tripId: number }) {
   );
 }
 
-function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; onEdit: (trip: Trip) => void; onDelete: (tripId: number) => void; isDeleting: boolean }) {
+function DriverTripCard({ trip, onEdit, onDelete, onComplete, isDeleting }: { trip: Trip; onEdit: (trip: Trip) => void; onDelete: (tripId: number) => void; onComplete: (tripId: number) => void; isDeleting: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const availableSeats = trip.seats - trip.seatsBooked;
 
@@ -180,6 +180,16 @@ function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; on
           )}
           {trip.status === 'active' && (
             <button
+              onClick={() => onComplete(trip.id)}
+              disabled={isDeleting}
+              className="p-2 rounded-lg bg-covoit-bg-tertiary text-covoit-success hover:bg-covoit-success/10 transition-colors disabled:opacity-50"
+              title="Marquer comme terminé"
+            >
+              <CheckCircle size={16} />
+            </button>
+          )}
+          {trip.status === 'active' && (
+            <button
               onClick={() => setExpanded(!expanded)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-covoit-bg-tertiary text-covoit-text-secondary text-sm hover:text-white hover:bg-white/5 transition-all"
             >
@@ -207,7 +217,7 @@ function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; on
 }
 
 export default function Trips() {
-  const { driverTrips, createTrip, updateTrip, cancelTrip } = useApp();
+  const { driverTrips, createTrip, updateTrip, cancelTrip, completeTrip } = useApp();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -247,6 +257,18 @@ export default function Trips() {
     setIsDeletingId(tripId);
     try {
       await cancelTrip(tripId);
+    } finally {
+      setIsDeletingId(null);
+    }
+  };
+
+  const handleCompleteTrip = async (tripId: number) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir marquer ce trajet comme terminé ?')) {
+      return;
+    }
+    setIsDeletingId(tripId);
+    try {
+      await completeTrip(tripId);
     } finally {
       setIsDeletingId(null);
     }
@@ -317,6 +339,7 @@ export default function Trips() {
               trip={trip}
               onEdit={handleEditTrip}
               onDelete={handleDeleteTrip}
+              onComplete={handleCompleteTrip}
               isDeleting={isDeletingId === trip.id}
             />
           ))}
