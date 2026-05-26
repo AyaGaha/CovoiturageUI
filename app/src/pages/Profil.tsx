@@ -44,17 +44,37 @@ export default function Profil() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
   const [showPasswordSection, setShowPasswordSection] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    updateProfile({ name, email, phone });
-    setIsSaving(false);
-    setCurrentPassword('');
-    setNewPassword('');
-    setShowPasswordSection(false);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await updateProfile({ name, email, phone });
+      setCurrentPassword('');
+      setNewPassword('');
+      setShowPasswordSection(false);
+    } catch (err: any) {
+      // Extract error message
+      let errorMessage = 'Erreur lors de la mise à jour';
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.response?.data?.errors) {
+        if (Array.isArray(err.response.data.errors)) {
+          errorMessage = err.response.data.errors.map((e: any) => e.message || String(e)).join(', ');
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -107,6 +127,21 @@ export default function Profil() {
               Modifier le profil
             </h3>
             <form onSubmit={handleSave} className="space-y-4">
+              {error && (
+                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-red-400 mb-1">Erreur</p>
+                    <p className="text-sm text-red-300/80">{error}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setError('')}
+                    className="text-red-400 hover:text-red-300 text-lg leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-covoit-text-secondary mb-1.5">
                   Nom complet

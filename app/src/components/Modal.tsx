@@ -7,9 +7,10 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   maxWidth?: string;
+  closeOnEscape?: boolean;
 }
 
-export default function Modal({ open, onClose, title, children, maxWidth = '440px' }: ModalProps) {
+export default function Modal({ open, onClose, title, children, maxWidth = '440px', closeOnEscape = true }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,13 +26,14 @@ export default function Modal({ open, onClose, title, children, maxWidth = '440p
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) {
+      if (e.key === 'Escape' && open && closeOnEscape) {
+        console.log('🎯 [Modal] Escape key pressed - closeOnEscape:', closeOnEscape);
         onClose();
       }
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [open, onClose]);
+  }, [open, onClose, closeOnEscape]);
 
   if (!open) return null;
 
@@ -40,7 +42,11 @@ export default function Modal({ open, onClose, title, children, maxWidth = '440p
       ref={overlayRef}
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in"
       onClick={(e) => {
-        if (e.target === overlayRef.current) onClose();
+        console.log('🎯 [Modal] Backdrop clicked - closeOnEscape:', closeOnEscape, 'e.target === ref:', e.target === overlayRef.current);
+        if (e.target === overlayRef.current && closeOnEscape) {
+          console.log('🎯 [Modal] Calling onClose() from backdrop click');
+          onClose();
+        }
       }}
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />

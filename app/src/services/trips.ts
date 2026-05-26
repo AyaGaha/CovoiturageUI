@@ -5,6 +5,7 @@
 
 import httpClient from '@/lib/http-client';
 import { apiConfig } from '@/config/api';
+import { executeGraphQL } from '@/lib/graphql-client';
 import type { Trip } from '@/types';
 
 export interface CreateTripRequest {
@@ -151,5 +152,85 @@ export const tripsService = {
       params: { stats: true },
     });
     return response.data;
+  },
+
+  /**
+   * Get upcoming trips using GraphQL (pagination support)
+   */
+  getUpcomingTripsGraphQL: async (page: number = 1, limit: number = 10): Promise<Trip[]> => {
+    const query = `
+      query GetUpcomingTrips($page: Int!, $limit: Int!) {
+        upcomingTrips(page: $page, limit: $limit) {
+          id
+          departure
+          destination
+          date
+          price
+          seats
+          seatsBooked
+          status
+          description
+          carModel
+          createdAt
+          driver {
+            id
+            name
+            rating
+          }
+        }
+      }
+    `;
+    const result = await executeGraphQL<{ upcomingTrips: Trip[] }>({
+      query,
+      variables: { page, limit },
+    });
+    return result.upcomingTrips || [];
+  },
+
+  /**
+   * Search trips using GraphQL with advanced filters
+   */
+  searchTripsGraphQL: async (filters: {
+    departure?: string;
+    destination?: string;
+    minSeats?: number;
+    maxPrice?: number;
+  } = {}): Promise<SearchTripsResponse> => {
+    const query = `
+      query SearchTrips($filters: SearchTripsFilter!) {
+        searchTrips(filters: $filters) {
+          edges {
+            node {
+              id
+              departure
+              destination
+              price
+              seats
+              seatsBooked
+              date
+              status
+              description
+              carModel
+              driver {
+                id
+                name
+                rating
+              }
+            }
+            cursor
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          totalCount
+        }
+      }
+    `;
+    const result = await executeGraphQL<{ searchTrips: SearchTripsResponse }>({
+      query,
+      variables: { filters },
+    });
+    return result.searchTrips;
   },
 };

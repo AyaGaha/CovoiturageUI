@@ -24,6 +24,8 @@ interface AppContextType {
   register: (name: string, email: string, password: string, phone?: string) => Promise<void>;
   authModal: boolean;
   setAuthModal: (open: boolean) => void;
+  authModalMode: 'login' | 'register';
+  setAuthModalMode: (mode: 'login' | 'register') => void;
   authLoading: boolean;
 
   // Trips
@@ -73,32 +75,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Auth
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [authModal, setAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [authLoading, setAuthLoading] = useState(false);
 
   // Trips
-  const [trips, setTrips] = useState<Trip[]>(mockTrips);
-  const [driverTripsState, setDriverTripsState] = useState<Trip[]>(driverTrips);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [driverTripsState, setDriverTripsState] = useState<Trip[]>([]);
   const [tripsLoading, setTripsLoading] = useState(false);
 
   // Bookings
-  const [bookings, setBookings] = useState<Booking[]>(mockBookings);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
 
   // Driver requests
-  const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>(mockBookingRequests);
+  const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([]);
 
   // Alerts
-  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
 
   // Notifications
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
   const [panelOpen, setPanelOpen] = useState(false);
 
+  // Restore and persist auth modal state (for handling page reloads during login errors)
+  useEffect(() => {
+    const savedAuthModal = localStorage.getItem('authModalOpen');
+    if (savedAuthModal === 'true') {
+      console.log('📝 [AppContext] Restoring authModal state from localStorage');
+      setAuthModal(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('authModalOpen', authModal.toString());
+    if (!authModal) {
+      // Clear error data when modal is fully closed
+      localStorage.removeItem('authModalError');
+      localStorage.removeItem('authModalEmail');
+      localStorage.removeItem('authModalPassword');
+      localStorage.removeItem('authModalName');
+      localStorage.removeItem('authModalPhone');
+    }
+  }, [authModal]);
+
   // Profile
   const [profileLoading, setProfileLoading] = useState(false);
 
-  const [userState, setUserState] = useState<User | null>(authService.getStoredUser() || currentUser);
+  const [userState, setUserState] = useState<User | null>(authService.getStoredUser() || null);
 
   const notificationIdRef = useRef(4);
 
@@ -129,7 +153,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNotifications(prev => prev.filter(n => n.id !== notificationId));
   }, []);
 
-  // Initialize data on mount
+  // Load all trips on app mount (for search page)
+  useEffect(() => {
+    const loadPublicTrips = async () => {
+      try {
+        setTripsLoading(true);
+        // Use GraphQL query for upcoming trips
+        const trips = await tripsService.getUpcomingTripsGraphQL(1, 50);
+        setTrips(trips.length > 0 ? trips : mockTrips);
+      } catch (error) {
+        console.error('Failed to load trips:', error);
+        // Fallback to mockData if API fails
+        setTrips(mockTrips);
+      } finally {
+        setTripsLoading(false);
+      }
+    };
+
+    loadPublicTrips();
+  }, []);
+
+  // Initialize authenticated user data
   useEffect(() => {
     const initializeApp = async () => {
       if (isAuthenticated) {
@@ -138,8 +182,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const userProfile = await usersService.getMe();
           setUserState(userProfile as User);
 
-          // Load trips
-          await loadTrips();
+          // Load user's own trips
+          const myTrips = await tripsService.getMyTrips();
+          setDriverTripsState(myTrips);
 
           // Load bookings
           await loadBookings();
@@ -148,7 +193,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await loadAlerts();
         } catch (error) {
           console.error('Failed to initialize app:', error);
-          // Fall back to mock data
+          // Fall back gracefully
         }
       }
     };
@@ -199,27 +244,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 
   const login = useCallback(async (email: string, password: string) => {
+    const debugLog = (msg: string) => {
+      console.log(msg);
+      const logs = JSON.parse(localStorage.getItem('authDebugLogs') || '[]');
+      logs.push({ time: new Date().toLocaleTimeString(), msg });
+      localStorage.setItem('authDebugLogs', JSON.stringify(logs.slice(-50)));
+    };
+    
+    debugLog('🔐 [AppContext] login() called with email: ' + email);
     try {
       setAuthLoading(true);
+      debugLog('🔐 [AppContext] Calling authService.login()...');
       const response = await authService.login({ email, password });
+      debugLog('✅ [AppContext] authService.login() succeeded: ' + response.user.name);
       setUserState(response.user as User);
+      debugLog('✅ [AppContext] Setting isAuthenticated = true');
       setIsAuthenticated(true);
+      debugLog('✅ [AppContext] Closing modal with setAuthModal(false)');
       setAuthModal(false);
-      addNotification({
-        type: 'success',
-        message: 'Connexion réussie',
-        details: `Bienvenue ${response.user.name}`,
-      });
-      await loadTrips();
-      await loadBookings();
-      await loadAlerts();
+      // Data will be loaded by useEffect when isAuthenticated changes
     } catch (error: any) {
-      console.error('Login failed:', error);
-      addNotification({
-        type: 'error',
-        message: 'Erreur de connexion',
-        details: error.response?.data?.message || 'Identifiants invalides',
-      });
+      debugLog('❌ [AppContext] login() failed: ' + error.message);
+      debugLog('❌ [AppContext] Error status: ' + error.response?.status);
+      debugLog('❌ [AppContext] Error message: ' + error.response?.data?.message);
+      debugLog('❌ [AppContext] Throwing error to AuthModal...');
       throw error;
     } finally {
       setAuthLoading(false);
@@ -233,25 +281,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setUserState(response.user as User);
       setIsAuthenticated(true);
       setAuthModal(false);
+      
+      // Show success notification
       addNotification({
         type: 'success',
-        message: 'Inscription réussie',
-        details: `Bienvenue ${response.user.name}`,
+        message: 'Bienvenue sur Wassalni !',
+        details: `Compte créé avec succès, ${name.split(' ')[0]}! Connecté automatiquement.`,
       });
-      await loadTrips();
-      await loadBookings();
+      
+      // Data will be loaded by useEffect when isAuthenticated changes
     } catch (error: any) {
       console.error('Registration failed:', error);
-      addNotification({
-        type: 'error',
-        message: 'Erreur d\'inscription',
-        details: error.response?.data?.message || 'Veuillez vérifier vos données',
-      });
       throw error;
     } finally {
       setAuthLoading(false);
     }
-  }, []);
+  }, [addNotification]);
 
   const logout = useCallback(async () => {
     try {
@@ -259,34 +304,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await authService.logout();
       setUserState(null);
       setIsAuthenticated(false);
-      setTrips([]);
+      setDriverTripsState([]);
       setBookings([]);
       setAlerts([]);
-      addNotification({
-        type: 'success',
-        message: 'Déconnexion réussie',
-      });
+      
+      // Charger les trajets publics depuis l'API
+      try {
+        const { trips: allTrips } = await tripsService.getTrips();
+        setTrips(allTrips);
+      } catch (error) {
+        console.error('Failed to reload public trips:', error);
+        setTrips([]);
+      }
     } catch (error) {
       console.error('Logout failed:', error);
     } finally {
       setAuthLoading(false);
     }
-  }, []);
+  }, [addNotification]);
 
   const searchTrips = useCallback(async (departure: string, destination: string, date: string) => {
     try {
-      return await tripsService.searchTrips({
+      // Try GraphQL search first
+      const result = await tripsService.searchTripsGraphQL({
         departure: departure || undefined,
         destination: destination || undefined,
       });
+      return result;
     } catch (error) {
       console.error('Search trips failed:', error);
-      return trips.filter(trip => {
+      // Fallback to client-side filtering of loaded trips
+      const filtered = trips.filter(trip => {
         const matchDeparture = !departure || trip.departure.toLowerCase().includes(departure.toLowerCase());
         const matchDestination = !destination || trip.destination.toLowerCase().includes(destination.toLowerCase());
         const matchDate = !date || trip.date === date;
         return matchDeparture && matchDestination && matchDate && trip.status === 'active';
       });
+      return {
+        edges: filtered.map(trip => ({ node: trip, cursor: trip.id.toString() })),
+        pageInfo: { hasNextPage: false, endCursor: '' },
+        totalCount: filtered.length,
+      };
     }
   }, [trips]);
 
@@ -502,10 +560,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
     } catch (error: any) {
       console.error('Update profile failed:', error);
+      
+      // Extract detailed error message from backend
+      let errorMessage = 'Impossible de mettre à jour le profil';
+      let errorDetails = '';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        // Try different error message locations
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.errors) {
+          // Handle validation errors (array of errors)
+          if (Array.isArray(errorData.errors)) {
+            errorMessage = errorData.errors.map((e: any) => e.message || String(e)).join(', ');
+          } else {
+            errorMessage = JSON.stringify(errorData.errors);
+          }
+        }
+        
+        // Add status code if available
+        if (error.response.status) {
+          errorDetails = `(Code: ${error.response.status})`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       addNotification({
         type: 'error',
         message: 'Erreur lors de la mise à jour du profil',
-        details: error.response?.data?.message || 'Impossible de mettre à jour le profil',
+        details: errorMessage + (errorDetails ? ' ' + errorDetails : ''),
       });
       throw error;
     } finally {
@@ -523,6 +611,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         register,
         authModal,
         setAuthModal,
+        authModalMode,
+        setAuthModalMode,
         authLoading,
         trips,
         driverTrips: driverTripsState,
