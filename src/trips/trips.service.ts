@@ -56,7 +56,9 @@ export class TripsService {
       ...(dto.price !== undefined && { price: dto.price }),
     });
 
-    return this.tripRepo.save(trip);
+  const updated = await this.tripRepo.save(trip);
+  this.eventEmitter.emit('trip.updated', { tripId: trip.id, changes: dto });
+  return updated;
   }
 
   async cancelTrip(tripId: number, driverId: number, reason?: string) {
