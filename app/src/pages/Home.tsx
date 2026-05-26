@@ -280,7 +280,7 @@ function FiltersSidebar({
 
 export default function Home() {
   const { searchTrips, tripsLoading, createBooking } = useApp();
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA');
   const [departure, setDeparture] = useState('');
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState(today);
@@ -302,22 +302,29 @@ export default function Home() {
 
   const handleSearch = useCallback(async () => {
     setIsSearching(true);
-    const { trips: found, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips(
-      departure,
-      destination,
-      date,
-      rangeDays ? Number(rangeDays) : undefined,
-      maxPrice ? Number(maxPrice) : undefined,
-      minSeats ? Number(minSeats) : undefined,
-      sortBy,
-      sortOrder,
-    );
-    setResults(Array.isArray(found) ? found : []);
-    setHasNextPage(more);
-    setEndCursor(cursor);
-    setTotalCount(count);
-    setHasSearched(true);
-    setIsSearching(false);
+    try {
+      const { trips: found, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips(
+        departure,
+        destination,
+        date,
+        rangeDays ? Number(rangeDays) : undefined,
+        maxPrice ? Number(maxPrice) : undefined,
+        minSeats ? Number(minSeats) : undefined,
+        sortBy,
+        sortOrder,
+      );
+      setResults(Array.isArray(found) ? found : []);
+      setHasNextPage(more);
+      setEndCursor(cursor);
+      setTotalCount(count);
+      setHasSearched(true);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setResults([]);
+      setHasSearched(true);
+    } finally {
+      setIsSearching(false);
+    }
   }, [departure, destination, date, rangeDays, maxPrice, minSeats, sortBy, sortOrder, searchTrips]);
 
   const handleLoadMore = useCallback(async () => {

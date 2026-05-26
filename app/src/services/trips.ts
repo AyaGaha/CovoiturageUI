@@ -311,15 +311,15 @@ export const tripsService = {
       }
     `;
     try {
-      console.log('🔍 Fetching upcoming trips with:', { page, limit });
+      console.log("🔍 Fetching upcoming trips with:", { page, limit });
       const result = await executeGraphQL<{ upcomingTrips: Trip[] }>({
         query,
         variables: { page, limit },
       });
-      console.log('✅ Upcoming trips result:', result);
+      console.log("✅ Upcoming trips result:", result);
       return result.upcomingTrips || [];
     } catch (error) {
-      console.error('❌ Failed to fetch upcoming trips:', error);
+      console.error("❌ Failed to fetch upcoming trips:", error);
       throw error;
     }
   },

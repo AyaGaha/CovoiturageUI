@@ -296,6 +296,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [driverTripsState, isAuthenticated]);
 
+  // Polling for new booking requests every 5 seconds when authenticated and has driver trips
+  useEffect(() => {
+    if (!isAuthenticated || driverTripsState.length === 0) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        await loadBookingRequests();
+      } catch (error) {
+        console.error('Polling booking requests failed:', error);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [isAuthenticated, driverTripsState]);
+
 
   const login = useCallback(async (email: string, password: string) => {
     const debugLog = (msg: string) => {
@@ -622,7 +637,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const createTrip = useCallback(async (data: any) => {
     try {
       const trip = await tripsService.createTrip(data);
+      // Update driver trips
       setDriverTripsState(prev => [trip, ...prev]);
+      
+      // Reload upcoming trips from GraphQL to get complete data with driver info
+      try {
+        const freshTrips = await tripsService.getUpcomingTripsGraphQL(1, 50);
+        if (freshTrips && freshTrips.length > 0) {
+          setTrips(freshTrips);
+        }
+      } catch (error) {
+        console.error('Failed to reload trips:', error);
+      }
+      
       addNotification({
         type: 'success',
         message: 'Trajet créé',
