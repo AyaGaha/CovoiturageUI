@@ -19,14 +19,15 @@ export interface Trip {
   departure: string;
   destination: string;
   date: string;
-  time: string;
+  time?: string;
   seats: number;
   seatsBooked: number;
   price: number;
   status: TripStatus;
   description: string;
   carModel: string;
-  driver: User;
+  driverId?: number;
+  driver?: User;
   createdAt: string;
 }
 

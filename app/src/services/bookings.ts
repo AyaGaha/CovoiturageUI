@@ -6,6 +6,7 @@
 import httpClient from '@/lib/http-client';
 import { apiConfig } from '@/config/api';
 import type { Booking, BookingRequest } from '@/types';
+import { executeGraphQL } from '@/lib/graphql-client';
 
 export interface CreateBookingRequest {
   tripId: number;
@@ -25,9 +26,7 @@ export const bookingsService = {
    * Create a new booking (passenger reserves a trip)
    */
   createBooking: async (tripId: number): Promise<BookingResponse> => {
-    const response = await httpClient.post(apiConfig.endpoints.bookings.create, {
-      tripId,
-    });
+    const response = await httpClient.post(apiConfig.endpoints.bookings.create, { tripId });
     return response.data;
   },
 
@@ -65,55 +64,71 @@ export const bookingsService = {
 
   /**
    * Get my bookings (passenger) - via GraphQL
-   * This uses the GraphQL endpoint through a wrapper
    */
   getMyBookings: async (): Promise<Booking[]> => {
-    const query = `
+  const data = await executeGraphQL<{ myBookings: Booking[] }>({
+    query: `
       query {
         myBookings {
           id
+          passengerId
           status
           cancelReason
-          createdAt
           trip {
             id
             departure
             destination
             date
             price
+            seats
+            seatsBooked
+            status
+            description
+            carModel
             driver {
-              id
-              name
-              rating
-            }
+                id
+                name
+                rating
+              }
           }
         }
       }
-    `;
-    const response = await httpClient.post(apiConfig.endpoints.graphql, { query });
-    return response.data.data.myBookings;
-  },
+    `,
+  });
+  console.log('📦 [bookingsService] myBookings response:', data);
+  return data?.myBookings ?? [];
+},
 
   /**
    * Get a single booking by ID - via GraphQL
    */
   getBookingById: async (id: number): Promise<Booking> => {
-    const query = `
-      query GetBooking($id: Int!) {
-        booking(id: $id) {
-          id
-          status
-          trip {
-            departure
-            destination
+    const data = await executeGraphQL<{ booking: Booking }>({
+      query: `
+        query GetBooking($id: Int!) {
+          booking(id: $id) {
+            id
+            status
+            cancelReason
+            trip {
+              id
+              departure
+              destination
+              date
+              time
+              price
+              driver {
+                id
+                name
+                rating
+              }
+            }
           }
         }
-      }
-    `;
-    const response = await httpClient.post(apiConfig.endpoints.graphql, {
-      query,
+      `,
       variables: { id },
     });
-    return response.data.data.booking;
+
+    return data.booking;
   },
 };

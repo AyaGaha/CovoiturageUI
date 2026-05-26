@@ -27,10 +27,13 @@ export interface UpdateTripRequest {
 export interface TripFilters {
   departure?: string;
   destination?: string;
+  date?: string;
   minSeats?: number;
   maxPrice?: number;
-  page?: number;
-  limit?: number;
+  sortBy?: 'date' | 'price' | 'driverRating';
+  sortOrder?: 'ASC' | 'DESC';
+  first?: number;
+  after?: string;
 }
 
 export interface SearchTripsResponse {
@@ -42,7 +45,6 @@ export interface SearchTripsResponse {
     hasNextPage: boolean;
     endCursor: string;
   };
-  totalCount: number;
 }
 
 export interface TripStatsResponse {
@@ -104,26 +106,17 @@ export const tripsService = {
     return response.data;
   },
 
-  /**
-   * Search trips with filters
-   */
-  searchTrips: async (filters: TripFilters): Promise<SearchTripsResponse> => {
-    const response = await httpClient.get(apiConfig.endpoints.trips.search, {
-      params: filters,
-    });
-    return response.data;
-  },
+  
 
   /**
    * Get upcoming trips (paginated)
    */
-  getUpcomingTrips: async (page: number = 1, limit: number = 10): Promise<{ trips: Trip[]; total: number }> => {
+   getUpcomingTrips: async (page: number = 1, limit: number = 10): Promise<{ trips: Trip[]; total: number }> => {
     const response = await httpClient.get(apiConfig.endpoints.trips.list, {
       params: { page, limit, status: 'active' },
     });
     return response.data;
   },
-
   /**
    * Get trips by status (active, cancelled, completed)
    */
@@ -143,7 +136,108 @@ export const tripsService = {
     });
     return response.data;
   },
+searchTrips: async (filters: TripFilters): Promise<SearchTripsResponse> => {
+  const normalizeDateFilter = (value?: string) => {
+    if (!value) return undefined;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00`;
+    return value;
+  };
 
+  const graphqlFilters = {
+    departure: filters.departure || undefined,
+    destination: filters.destination || undefined,
+    date: normalizeDateFilter(filters.date),
+    minSeats: filters.minSeats || undefined,
+    maxPrice: filters.maxPrice || undefined,
+    sortBy: filters.sortBy || undefined,
+    sortOrder: filters.sortOrder || undefined,
+    first: filters.first || undefined,
+    after: filters.after || undefined,
+  };
+
+  const query = `
+    query SearchTrips($filters: SearchTripsInput) {
+      searchTrips(filters: $filters) {
+        edges {
+          cursor
+          node {
+            id
+            departure
+            destination
+            date
+            seats
+            seatsBooked
+            price
+            status
+            description
+            carModel
+            driverId
+            driver {
+              id
+              name
+              rating
+            }
+            createdAt
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  `;
+
+  const response = await httpClient.post(apiConfig.endpoints.graphql, {
+    query,
+    variables: { filters: graphqlFilters },
+  });
+
+  if (response.data.errors) {
+    throw new Error(response.data.errors[0].message);
+  }
+
+  return response.data.data.searchTrips;
+},
+
+searchTripsNearDate: async (date: string, rangeDays: number): Promise<Trip[]> => {
+  const query = `
+    query TripsNearDate($date: String!, $rangeDays: Int!) {
+      tripsNearDate(date: $date, rangeDays: $rangeDays) {
+        id
+        departure
+        destination
+        date
+        seats
+        seatsBooked
+        price
+        status
+        description
+        carModel
+        driverId
+        driver {
+          id
+          name
+          rating
+        }
+        createdAt
+      }
+    }
+  `;
+
+  const response = await httpClient.post(apiConfig.endpoints.graphql, {
+    query,
+    variables: { date, rangeDays },
+  });
+
+  if (response.data.errors) {
+    throw new Error(response.data.errors[0].message);
+  }
+
+  return response.data.data.tripsNearDate;
+},
+
+  
   /**
    * Get driver trip statistics
    */
@@ -157,7 +251,7 @@ export const tripsService = {
   /**
    * Get upcoming trips using GraphQL (pagination support)
    */
-  getUpcomingTripsGraphQL: async (page: number = 1, limit: number = 10): Promise<Trip[]> => {
+ getUpcomingTripsGraphQL: async (page: number = 1, limit: number = 10): Promise<Trip[]> => {
     const query = `
       query GetUpcomingTrips($page: Int!, $limit: Int!) {
         upcomingTrips(page: $page, limit: $limit) {
@@ -186,6 +280,7 @@ export const tripsService = {
     });
     return result.upcomingTrips || [];
   },
+
 
   /**
    * Search trips using GraphQL with advanced filters

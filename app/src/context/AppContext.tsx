@@ -32,7 +32,18 @@ interface AppContextType {
   trips: Trip[];
   driverTrips: Trip[];
   tripsLoading: boolean;
-  searchTrips: (departure: string, destination: string, date: string) => Promise<Trip[]>;
+  searchTrips: (
+  departure: string,
+  destination: string,
+  date: string,
+  rangeDays?: number,
+  maxPrice?: number,
+  minSeats?: number,
+  sortBy?: 'date' | 'price' | 'driverRating',
+  sortOrder?: 'ASC' | 'DESC',
+  first?: number,
+  after?: string,
+) => Promise<{ trips: Trip[]; hasNextPage: boolean; endCursor: string | null; totalCount: number }>;
   createTrip: (data: any) => Promise<Trip>;
   updateTrip: (tripId: number, data: any) => Promise<Trip>;
   cancelTrip: (tripId: number) => Promise<void>;
@@ -154,7 +165,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Load all trips on app mount (for search page)
-  useEffect(() => {
+useEffect(() => {
     const loadPublicTrips = async () => {
       try {
         setTripsLoading(true);
@@ -242,6 +253,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loadBookingRequests = async () => {
+    try {
+      // Only load if we have driver trips
+      if (driverTripsState.length === 0) {
+        setBookingRequests([]);
+        return;
+      }
+
+      const allRequests: BookingRequest[] = [];
+
+      // Fetch pending bookings for each driver's trip
+      for (const trip of driverTripsState) {
+        try {
+          const pending = await bookingsService.getPendingBookings(trip.id);
+          allRequests.push(...pending);
+        } catch (error) {
+          console.warn(`Failed to load pending bookings for trip ${trip.id}:`, error);
+          // Continue with other trips if one fails
+        }
+      }
+
+      setBookingRequests(allRequests);
+    } catch (error) {
+      console.error('Failed to load booking requests:', error);
+      // Don't fail the whole operation if booking requests fail
+    }
+  };
+
+  // Load booking requests whenever driver trips change
+  useEffect(() => {
+    if (isAuthenticated && driverTripsState.length > 0) {
+      loadBookingRequests();
+    }
+  }, [driverTripsState, isAuthenticated]);
+
 
   const login = useCallback(async (email: string, password: string) => {
     const debugLog = (msg: string) => {
@@ -323,30 +369,108 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addNotification]);
 
-  const searchTrips = useCallback(async (departure: string, destination: string, date: string) => {
-    try {
-      // Try GraphQL search first
-      const result = await tripsService.searchTripsGraphQL({
-        departure: departure || undefined,
-        destination: destination || undefined,
-      });
-      return result;
-    } catch (error) {
-      console.error('Search trips failed:', error);
-      // Fallback to client-side filtering of loaded trips
-      const filtered = trips.filter(trip => {
-        const matchDeparture = !departure || trip.departure.toLowerCase().includes(departure.toLowerCase());
-        const matchDestination = !destination || trip.destination.toLowerCase().includes(destination.toLowerCase());
-        const matchDate = !date || trip.date === date;
-        return matchDeparture && matchDestination && matchDate && trip.status === 'active';
-      });
+  const searchTrips = useCallback(async (
+  departure: string,
+  destination: string,
+  date: string,
+  rangeDays?: number,
+  maxPrice?: number,
+  minSeats?: number,
+  sortBy?: 'date' | 'price' | 'driverRating',
+  sortOrder?: 'ASC' | 'DESC',
+  first?: number,
+  after?: string,
+): Promise<{ trips: Trip[]; hasNextPage: boolean; endCursor: string | null; totalCount: number }> => {
+
+  const toDateOnly = (value: string) => value.split('T')[0];
+
+  const filterTrips = (items: Trip[]) => {
+    return items.filter(trip => {
+      const matchDeparture = !departure || trip.departure.toLowerCase().includes(departure.toLowerCase());
+      const matchDestination = !destination || trip.destination.toLowerCase().includes(destination.toLowerCase());
+      let matchDate = true;
+      if (date) {
+        if (rangeDays !== undefined) {
+          const center = new Date(date);
+          const from = new Date(center); from.setDate(from.getDate() - rangeDays); from.setHours(0,0,0,0);
+          const to = new Date(center); to.setDate(to.getDate() + rangeDays); to.setHours(23,59,59,999);
+          const tripDate = new Date(trip.date);
+          matchDate = tripDate >= from && tripDate <= to;
+        } else {
+          matchDate = toDateOnly(trip.date) === toDateOnly(date);
+        }
+      }
+      const matchPrice = !maxPrice || trip.price <= maxPrice;
+      const matchSeats = !minSeats || (trip.seats - trip.seatsBooked) >= minSeats;
+      return matchDeparture && matchDestination && matchDate && matchPrice && matchSeats && trip.status === 'active';
+    });
+  };
+
+  const sortTrips = (items: Trip[]) => {
+    if (!sortBy) return items;
+    const direction = (sortOrder ?? 'ASC') === 'ASC' ? 1 : -1;
+    return [...items].sort((a, b) => {
+      if (sortBy === 'price') return (a.price - b.price) * direction;
+      if (sortBy === 'driverRating') {
+        const aR = a.driver?.rating ?? (sortOrder === 'ASC' ? Infinity : -Infinity);
+        const bR = b.driver?.rating ?? (sortOrder === 'ASC' ? Infinity : -Infinity);
+        return (aR - bR) * direction;
+      }
+      return (new Date(a.date).getTime() - new Date(b.date).getTime()) * direction;
+    });
+  };
+
+  const applyCursorPagination = (items: Trip[]) => {
+    const pageSize = first ?? 5;
+    const afterIndex = after ? parseInt(after, 10) : NaN;
+    const startIndex = isNaN(afterIndex) ? 0 : afterIndex + 1;
+    const page = items.slice(startIndex, startIndex + pageSize);
+    const endIndex = page.length > 0 ? startIndex + page.length - 1 : null;
+    return {
+      trips: page,
+      hasNextPage: startIndex + pageSize < items.length,
+      endCursor: endIndex === null ? null : String(endIndex),
+      totalCount: items.length,
+    };
+  };
+
+  try {
+    if (date && rangeDays !== undefined) {
+      const response = await tripsService.searchTripsNearDate(date, rangeDays);
+      const filtered = filterTrips(response);
+      const sorted = sortTrips(filtered);
+      return applyCursorPagination(sorted);
+    }
+
+    const response = await tripsService.searchTrips({
+      departure: departure || undefined,
+      destination: destination || undefined,
+      date: date || undefined,
+      maxPrice: maxPrice || undefined,
+      minSeats: minSeats || undefined,
+      sortBy: sortBy || undefined,
+      sortOrder: sortOrder || undefined,
+      first: first || undefined,
+      after: after || undefined,
+    });
+
+    if (response && Array.isArray(response.edges)) {
       return {
-        edges: filtered.map(trip => ({ node: trip, cursor: trip.id.toString() })),
-        pageInfo: { hasNextPage: false, endCursor: '' },
-        totalCount: filtered.length,
+        trips: response.edges.map(e => e.node),
+        hasNextPage: response.pageInfo?.hasNextPage ?? false,
+        endCursor: response.pageInfo?.endCursor ?? null,
+        totalCount: response.edges.length,
       };
     }
-  }, [trips]);
+
+    return { trips: [], hasNextPage: false, endCursor: null, totalCount: 0 };
+  } catch (error) {
+    console.error('Search trips failed:', error);
+    const filtered = filterTrips(trips);
+    const sorted = sortTrips(filtered);
+    return applyCursorPagination(sorted);
+  }
+}, [trips]);
 
   const createBooking = useCallback(async (tripId: number) => {
     try {

@@ -81,11 +81,11 @@ function TripRequestsPanel({ tripId }: { tripId: number }) {
           className="flex flex-col sm:flex-row sm:items-center gap-3 bg-covoit-bg-tertiary rounded-xl p-4"
         >
           <div className="flex items-center gap-3 flex-1">
-            <UserAvatar name={request.passenger.name} size={36} />
+            <UserAvatar name={request.passenger?.name ?? 'Passager'} size={36} />
             <div>
-              <p className="text-sm font-medium text-white">{request.passenger.name}</p>
+              <p className="text-sm font-medium text-white">{request.passenger?.name ?? 'Passager'}</p>
               <p className="text-xs text-covoit-text-muted">
-                {format(parseISO(request.createdAt), 'd MMM yyyy à HH:mm', { locale: fr })}
+                {request.createdAt ? format(parseISO(request.createdAt), 'd MMM yyyy à HH:mm', { locale: fr }) : ''}
               </p>
             </div>
           </div>
@@ -143,7 +143,7 @@ function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; on
           <div className="flex flex-wrap items-center gap-4 text-sm text-covoit-text-secondary">
             <span className="flex items-center gap-1.5">
               <Calendar size={13} className="text-covoit-text-muted" />
-              {format(parseISO(trip.date), 'EEE d MMM yyyy', { locale: fr })} à {trip.time}
+              {format(parseISO(trip.date), 'EEE d MMM yyyy', { locale: fr })}{trip.time ? ` à ${trip.time}` : ''}
             </span>
             <span className="flex items-center gap-1.5">
               <Users size={13} className="text-covoit-text-muted" />

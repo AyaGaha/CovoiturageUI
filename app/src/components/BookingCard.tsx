@@ -36,13 +36,15 @@ export default function BookingCard({ booking, onCancel, isCancelling = false }:
               <Calendar size={13} className="text-covoit-text-muted" />
               {format(parseISO(booking.trip.date), 'EEE d MMM yyyy', { locale: fr })}
             </span>
-            <span className="flex items-center gap-1.5">
-              <Clock size={13} className="text-covoit-text-muted" />
-              {booking.trip.time}
-            </span>
+            {booking.trip.time && (
+              <span className="flex items-center gap-1.5">
+                <Clock size={13} className="text-covoit-text-muted" />
+                {booking.trip.time}
+              </span>
+            )}    
             <span className="flex items-center gap-1.5">
               <MapPin size={13} className="text-covoit-text-muted" />
-              {booking.trip.driver.name}
+              {booking.trip.driver?.name ?? 'Conducteur'}
             </span>
           </div>
 
