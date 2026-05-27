@@ -3,6 +3,7 @@ import { X, CheckCircle, XCircle, Bell, Trash2, CheckCheck } from 'lucide-react'
 import { useApp } from '@/context/AppContext';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useNavigate } from 'react-router';
 
 const iconMap = {
   success: { Icon: CheckCircle, color: 'text-covoit-success', bg: 'bg-covoit-success/15' },
@@ -11,6 +12,7 @@ const iconMap = {
 };
 
 export default function NotificationsPanel() {
+  const navigate = useNavigate();
   const {
     notifications,
     unreadCount,
@@ -22,6 +24,25 @@ export default function NotificationsPanel() {
   } = useApp();
 
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleNotificationClick = (notificationId: number, action?: { route: string; bookingId?: number; tripId?: number }) => {
+    markAsRead(notificationId);
+    if (!action) {
+      return;
+    }
+
+    const search = new URLSearchParams();
+    if (action.tripId !== undefined) {
+      search.set('tripId', String(action.tripId));
+    }
+    if (action.bookingId !== undefined) {
+      search.set('bookingId', String(action.bookingId));
+    }
+
+    const nextRoute = search.toString() ? `${action.route}?${search.toString()}` : action.route;
+    setPanelOpen(false);
+    navigate(nextRoute);
+  };
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -97,7 +118,7 @@ export default function NotificationsPanel() {
                   className={`flex items-start gap-3 p-3 rounded-xl transition-all ${
                     notification.read ? 'bg-covoit-bg-secondary/50' : 'bg-covoit-bg-secondary'
                   } hover:bg-covoit-bg-tertiary cursor-pointer group`}
-                  onClick={() => markAsRead(notification.id)}
+                  onClick={() => handleNotificationClick(notification.id, notification.action)}
                 >
                   <div className={`p-2 rounded-lg ${bg} shrink-0`}>
                     <Icon size={16} className={color} />

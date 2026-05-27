@@ -15,6 +15,7 @@ export const apiConfig = {
       login: '/auth/login',
       logout: '/auth/logout',
       refresh: '/auth/refresh',
+      changePassword: '/auth/change-password',
     },
     trips: {
       list: '/trips',

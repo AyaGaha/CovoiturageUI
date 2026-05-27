@@ -62,6 +62,11 @@ export interface Notification {
   type: NotificationType;
   message: string;
   details?: string;
+  action?: {
+    route: string;
+    bookingId?: number;
+    tripId?: number;
+  };
   read: boolean;
   createdAt: string;
 }

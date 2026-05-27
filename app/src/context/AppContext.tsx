@@ -14,6 +14,7 @@ import { tripsService } from '@/services/trips';
 import { bookingsService } from '@/services/bookings';
 import { alertsService } from '@/services/alerts';
 import { usersService } from '@/services/users';
+import { apiConfig } from '@/config/api';
 
 interface AppContextType {
   // Auth
@@ -77,12 +78,83 @@ interface AppContextType {
 
   // Profile
   updateProfile: (data: Partial<User>) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<void>;
   profileLoading: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+const TRIPS_CACHE_KEY = 'publicTripsCache';
+
+const readCachedTrips = (): Trip[] => {
+  try {
+    const raw = localStorage.getItem(TRIPS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((t) => normalizeTrip(t as Trip)) : [];
+  } catch {
+    return [];
+  }
+};
+
+const persistTripsCache = (items: Trip[]) => {
+  try {
+    localStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(items));
+  } catch {
+    // Ignore localStorage write failures
+  }
+};
+
+const normalizeTripStatus = (status?: string): 'active' | 'cancelled' | 'completed' => {
+  const value = (status ?? 'active').toLowerCase();
+  if (value === 'cancelled') return 'cancelled';
+  if (value === 'completed') return 'completed';
+  return 'active';
+};
+
+const normalizeTrip = (trip: Trip): Trip => {
+  return {
+    ...trip,
+    status: normalizeTripStatus(String(trip.status)),
+  };
+};
+
+const extractBookingFromSseMessage = (raw: unknown): BookingRequest | null => {
+  const obj = raw as any;
+  const booking = obj?.booking ?? obj?.data?.booking ?? obj?.payload?.booking ?? obj?.data ?? obj?.payload ?? obj;
+  if (!booking || booking.id === undefined || booking.tripId === undefined) {
+    return null;
+  }
+
+  return {
+    ...booking,
+    id: Number(booking.id),
+    tripId: Number(booking.tripId),
+  } as BookingRequest;
+};
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const ACCESS_TOKEN_REFRESH_INTERVAL_MS = 14 * 60 * 1000;
+  const PUBLIC_TRIPS_TIMEOUT_MS = 12000;
+  const SEARCH_TRIPS_TIMEOUT_MS = 12000;
+
+  const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, context: string): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        reject(new Error(`${context} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      promise
+        .then((value) => {
+          window.clearTimeout(timeoutId);
+          resolve(value);
+        })
+        .catch((error) => {
+          window.clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+  };
+
   // Auth
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [authModal, setAuthModal] = useState(false);
@@ -90,7 +162,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(false);
 
   // Trips
-  const [trips, setTrips] = useState<Trip[]>([]);
+  const [trips, setTrips] = useState<Trip[]>(() => readCachedTrips());
   const [driverTripsState, setDriverTripsState] = useState<Trip[]>([]);
   const [tripsLoading, setTripsLoading] = useState(false);
 
@@ -130,12 +202,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authModal]);
 
+  // Keep session alive by refreshing access token before expiration
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const refreshSession = async () => {
+      const refreshToken = authService.getRefreshToken();
+      if (!refreshToken || refreshToken === 'undefined' || refreshToken === 'null') {
+        return;
+      }
+
+      try {
+        await authService.refreshToken(refreshToken);
+      } catch (error) {
+        console.error('Silent token refresh failed:', error);
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshSession();
+    }, ACCESS_TOKEN_REFRESH_INTERVAL_MS);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshSession();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    void refreshSession();
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [ACCESS_TOKEN_REFRESH_INTERVAL_MS, isAuthenticated]);
+
   // Profile
   const [profileLoading, setProfileLoading] = useState(false);
 
   const [userState, setUserState] = useState<User | null>(authService.getStoredUser() || null);
 
   const notificationIdRef = useRef(4);
+  const notifiedBookingRequestIdsRef = useRef<Set<number>>(new Set());
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -164,18 +275,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNotifications(prev => prev.filter(n => n.id !== notificationId));
   }, []);
 
+  const notifyNewBookingRequest = useCallback((booking: BookingRequest) => {
+    if (notifiedBookingRequestIdsRef.current.has(booking.id)) {
+      return;
+    }
+
+    notifiedBookingRequestIdsRef.current.add(booking.id);
+    const passengerName = booking.passenger?.name?.trim() || 'Un passager';
+    addNotification({
+      type: 'info',
+      message: 'Nouvelle demande de reservation',
+      details: `${passengerName} vient de demander une place sur l un de vos trajets.`,
+      action: {
+        route: '/trips',
+        tripId: booking.tripId,
+        bookingId: booking.id,
+      },
+    });
+  }, [addNotification]);
+
   // Load all trips on app mount (for search page)
 useEffect(() => {
     const loadPublicTrips = async () => {
       try {
         setTripsLoading(true);
         // Use GraphQL query for upcoming trips
-        const trips = await tripsService.getUpcomingTripsGraphQL(1, 50);
-        setTrips(trips.length > 0 ? trips : mockTrips);
+        const trips = await withTimeout(
+          tripsService.getUpcomingTripsGraphQL(1, 50),
+          PUBLIC_TRIPS_TIMEOUT_MS,
+          'Load public trips',
+        );
+        const resolvedTrips = (trips.length > 0 ? trips : mockTrips).map(normalizeTrip);
+        setTrips(resolvedTrips);
+        persistTripsCache(resolvedTrips);
       } catch (error) {
         console.error('Failed to load trips:', error);
         // Fallback to mockData if API fails
-        setTrips(mockTrips);
+        const fallbackTrips = mockTrips.map(normalizeTrip);
+        setTrips(fallbackTrips);
+        persistTripsCache(fallbackTrips);
       } finally {
         setTripsLoading(false);
       }
@@ -195,7 +333,7 @@ useEffect(() => {
 
           // Load user's own trips
           const myTrips = await tripsService.getMyTrips();
-          setDriverTripsState(myTrips);
+          setDriverTripsState(myTrips.map(normalizeTrip));
 
           // Load bookings
           await loadBookings();
@@ -216,11 +354,13 @@ useEffect(() => {
     try {
       setTripsLoading(true);
       const { trips: allTrips } = await tripsService.getTrips();
-      setTrips(allTrips);
+      const normalizedPublicTrips = allTrips.map(normalizeTrip);
+      setTrips(normalizedPublicTrips);
+      persistTripsCache(normalizedPublicTrips);
 
       if (isAuthenticated) {
         const myTrips = await tripsService.getMyTrips();
-        setDriverTripsState(myTrips);
+        setDriverTripsState(myTrips.map(normalizeTrip));
       }
     } catch (error) {
       console.error('Failed to load trips:', error);
@@ -253,40 +393,132 @@ useEffect(() => {
     }
   };
 
-  const loadBookingRequests = async () => {
+  const loadInitialBookingRequests = async (notifyOnNew: boolean = false) => {
+    if (!isAuthenticated || driverTripsState.length === 0) {
+      setBookingRequests([]);
+      return;
+    }
+
     try {
-      // Only load if we have driver trips
-      if (driverTripsState.length === 0) {
-        setBookingRequests([]);
-        return;
-      }
-
       const allRequests: BookingRequest[] = [];
-
-      // Fetch pending bookings for each driver's trip
       for (const trip of driverTripsState) {
         try {
           const pending = await bookingsService.getPendingBookings(trip.id);
           allRequests.push(...pending);
         } catch (error) {
           console.warn(`Failed to load pending bookings for trip ${trip.id}:`, error);
-          // Continue with other trips if one fails
         }
       }
 
-      setBookingRequests(allRequests);
+      const byId = new Map<number, BookingRequest>();
+      for (const req of allRequests) {
+        byId.set(req.id, req);
+      }
+      const nextRequests = Array.from(byId.values());
+      setBookingRequests(prev => {
+        if (notifyOnNew) {
+          const prevIds = new Set(prev.map(item => item.id));
+          const newItems = nextRequests.filter(item => !prevIds.has(item.id));
+          for (const item of newItems) {
+            notifyNewBookingRequest(item);
+          }
+        }
+        return nextRequests;
+      });
     } catch (error) {
-      console.error('Failed to load booking requests:', error);
-      // Don't fail the whole operation if booking requests fail
+      console.error('Failed to load initial booking requests:', error);
     }
   };
 
-  // Load booking requests whenever driver trips change
+  // Initial seed of pending booking requests for the current driver's trips.
   useEffect(() => {
-    if (isAuthenticated && driverTripsState.length > 0) {
-      loadBookingRequests();
+    void loadInitialBookingRequests();
+  }, [isAuthenticated, driverTripsState]);
+
+  // Real-time booking requests via SSE
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
     }
-  }, [driverTripsState, isAuthenticated]);
+
+    const accessToken = authService.getAccessToken();
+    const streamUrl = accessToken
+      ? `${apiConfig.baseURL}/bookings/stream?token=${encodeURIComponent(accessToken)}`
+      : `${apiConfig.baseURL}/bookings/stream`;
+
+    const eventSource = new EventSource(streamUrl, { withCredentials: true });
+    let fallbackPollingId: number | null = null;
+
+    const startFallbackPolling = () => {
+      if (fallbackPollingId !== null) {
+        return;
+      }
+      fallbackPollingId = window.setInterval(() => {
+        void loadInitialBookingRequests(true);
+      }, 5000);
+    };
+
+    const stopFallbackPolling = () => {
+      if (fallbackPollingId !== null) {
+        window.clearInterval(fallbackPollingId);
+        fallbackPollingId = null;
+      }
+    };
+
+    eventSource.onopen = () => {
+      stopFallbackPolling();
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data);
+        const booking = extractBookingFromSseMessage(parsed);
+        if (!booking) {
+          return;
+        }
+
+        const status = String(booking.status ?? 'pending').toLowerCase();
+        if (status !== 'pending') {
+          return;
+        }
+
+        if (driverTripsState.length === 0) {
+          return;
+        }
+
+        const isForThisDriver = driverTripsState.some(trip => trip.id === booking.tripId);
+        if (!isForThisDriver) {
+          return;
+        }
+
+        let isNewRequest = false;
+        setBookingRequests(prev => {
+          const exists = prev.some(item => item.id === booking.id);
+          if (exists) {
+            return prev;
+          }
+          isNewRequest = true;
+          return [booking, ...prev];
+        });
+
+        if (isNewRequest) {
+          notifyNewBookingRequest(booking);
+        }
+      } catch (error) {
+        console.error('Failed to parse SSE booking event:', error);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('SSE error', err);
+      startFallbackPolling();
+    };
+
+    return () => {
+      stopFallbackPolling();
+      eventSource.close();
+    };
+  }, [isAuthenticated, driverTripsState, notifyNewBookingRequest]);
 
 
   const login = useCallback(async (email: string, password: string) => {
@@ -353,14 +585,18 @@ useEffect(() => {
       setDriverTripsState([]);
       setBookings([]);
       setAlerts([]);
+      notifiedBookingRequestIdsRef.current.clear();
       
       // Charger les trajets publics depuis l'API
       try {
         const { trips: allTrips } = await tripsService.getTrips();
-        setTrips(allTrips);
+        const normalizedPublicTrips = allTrips.map(normalizeTrip);
+        setTrips(normalizedPublicTrips);
+        persistTripsCache(normalizedPublicTrips);
       } catch (error) {
         console.error('Failed to reload public trips:', error);
         setTrips([]);
+        persistTripsCache([]);
       }
     } catch (error) {
       console.error('Logout failed:', error);
@@ -402,7 +638,14 @@ useEffect(() => {
       }
       const matchPrice = !maxPrice || trip.price <= maxPrice;
       const matchSeats = !minSeats || (trip.seats - trip.seatsBooked) >= minSeats;
-      return matchDeparture && matchDestination && matchDate && matchPrice && matchSeats && trip.status === 'active';
+      return (
+        matchDeparture &&
+        matchDestination &&
+        matchDate &&
+        matchPrice &&
+        matchSeats &&
+        normalizeTripStatus(String(trip.status)) === 'active'
+      );
     });
   };
 
@@ -421,7 +664,7 @@ useEffect(() => {
   };
 
   const applyCursorPagination = (items: Trip[]) => {
-    const pageSize = first ?? 5;
+    const pageSize = first ?? 6;
     const afterIndex = after ? parseInt(after, 10) : NaN;
     const startIndex = isNaN(afterIndex) ? 0 : afterIndex + 1;
     const page = items.slice(startIndex, startIndex + pageSize);
@@ -434,29 +677,51 @@ useEffect(() => {
     };
   };
 
+  const isInitialBrowse =
+    !departure &&
+    !destination &&
+    !date &&
+    rangeDays === undefined &&
+    !maxPrice &&
+    !minSeats;
+
+  if (isInitialBrowse && trips.length > 0) {
+    const filtered = filterTrips(trips);
+    const sorted = sortTrips(filtered);
+    return applyCursorPagination(sorted);
+  }
+
   try {
     if (date && rangeDays !== undefined) {
-      const response = await tripsService.searchTripsNearDate(date, rangeDays);
-      const filtered = filterTrips(response);
+      const response = await withTimeout(
+        tripsService.searchTripsNearDate(date, rangeDays),
+        SEARCH_TRIPS_TIMEOUT_MS,
+        'Search trips near date',
+      );
+      const filtered = filterTrips(response.map(normalizeTrip));
       const sorted = sortTrips(filtered);
       return applyCursorPagination(sorted);
     }
 
-    const response = await tripsService.searchTrips({
-      departure: departure || undefined,
-      destination: destination || undefined,
-      date: date || undefined,
-      maxPrice: maxPrice || undefined,
-      minSeats: minSeats || undefined,
-      sortBy: sortBy || undefined,
-      sortOrder: sortOrder || undefined,
-      first: first || undefined,
-      after: after || undefined,
-    });
+    const response = await withTimeout(
+      tripsService.searchTrips({
+        departure: departure || undefined,
+        destination: destination || undefined,
+        date: date || undefined,
+        maxPrice: maxPrice || undefined,
+        minSeats: minSeats || undefined,
+        sortBy: sortBy || undefined,
+        sortOrder: sortOrder || undefined,
+        first: first || undefined,
+        after: after || undefined,
+      }),
+      SEARCH_TRIPS_TIMEOUT_MS,
+      'Search trips',
+    );
 
     if (response && Array.isArray(response.edges)) {
       return {
-        trips: response.edges.map(e => e.node),
+        trips: response.edges.map(e => normalizeTrip(e.node)),
         hasNextPage: response.pageInfo?.hasNextPage ?? false,
         endCursor: response.pageInfo?.endCursor ?? null,
         totalCount: response.edges.length,
@@ -613,14 +878,24 @@ useEffect(() => {
 
   const createTrip = useCallback(async (data: any) => {
     try {
-      const trip = await tripsService.createTrip(data);
-      setDriverTripsState(prev => [trip, ...prev]);
+      const createdTrip = normalizeTrip(await tripsService.createTrip(data));
+      setDriverTripsState(prev => [createdTrip, ...prev]);
+      if (createdTrip.status === 'active') {
+        setTrips(prev => {
+          const exists = prev.some(t => t.id === createdTrip.id);
+          const next = exists
+            ? prev.map(t => (t.id === createdTrip.id ? createdTrip : t))
+            : [createdTrip, ...prev];
+          persistTripsCache(next);
+          return next;
+        });
+      }
       addNotification({
         type: 'success',
         message: 'Trajet créé',
         details: `${data.departure} → ${data.destination}`,
       });
-      return trip;
+      return createdTrip;
     } catch (error: any) {
       console.error('Create trip failed:', error);
       addNotification({
@@ -634,13 +909,18 @@ useEffect(() => {
 
   const updateTrip = useCallback(async (tripId: number, data: any) => {
     try {
-      const trip = await tripsService.updateTrip(tripId, data);
-      setDriverTripsState(prev => prev.map(t => (t.id === tripId ? trip : t)));
+      const updatedTrip = normalizeTrip(await tripsService.updateTrip(tripId, data));
+      setDriverTripsState(prev => prev.map(t => (t.id === tripId ? updatedTrip : t)));
+      setTrips(prev => {
+        const next = prev.map(t => (t.id === tripId ? updatedTrip : t));
+        persistTripsCache(next);
+        return next;
+      });
       addNotification({
         type: 'success',
         message: 'Trajet modifié',
       });
-      return trip;
+      return updatedTrip;
     } catch (error: any) {
       console.error('Update trip failed:', error);
       addNotification({
@@ -656,6 +936,11 @@ useEffect(() => {
     try {
       await tripsService.cancelTrip(tripId);
       setDriverTripsState(prev => prev.map(t => (t.id === tripId ? { ...t, status: 'cancelled' } : t)));
+      setTrips(prev => {
+        const next = prev.map(t => (t.id === tripId ? { ...t, status: 'cancelled' as const } : t));
+        persistTripsCache(next);
+        return next;
+      });
       addNotification({
         type: 'success',
         message: 'Trajet annulé',
@@ -677,6 +962,8 @@ useEffect(() => {
       setProfileLoading(true);
       const updated = await usersService.updateProfile(data);
       setUserState(prev => (prev ? { ...prev, ...updated } : updated as User));
+      // Save updated user to localStorage so it persists after page reload
+      localStorage.setItem('user', JSON.stringify(updated));
       addNotification({
         type: 'success',
         message: 'Profil mis à jour',
@@ -725,6 +1012,55 @@ useEffect(() => {
     }
   }, [addNotification]);
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string, confirmPassword: string) => {
+    try {
+      setProfileLoading(true);
+      await authService.changePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+      addNotification({
+        type: 'success',
+        message: 'Mot de passe modifié',
+        details: 'Votre mot de passe a été changé avec succès',
+      });
+    } catch (error: any) {
+      console.error('Change password failed:', error);
+      
+      // Extract detailed error message from backend
+      let errorMessage = 'Impossible de modifier le mot de passe';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        // Try different error message locations
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.errors) {
+          if (Array.isArray(errorData.errors)) {
+            errorMessage = errorData.errors.map((e: any) => e.message || String(e)).join(', ');
+          } else {
+            errorMessage = JSON.stringify(errorData.errors);
+          }
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      addNotification({
+        type: 'error',
+        message: 'Erreur de modification du mot de passe',
+        details: errorMessage,
+      });
+      throw error;
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [addNotification]);
+
   return (
     <AppContext.Provider
       value={{
@@ -765,6 +1101,7 @@ useEffect(() => {
         dismissNotification,
         addNotification,
         updateProfile,
+        changePassword,
         profileLoading,
       }}
     >
@@ -780,3 +1117,4 @@ export function useApp() {
   }
   return context;
 }
+

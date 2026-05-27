@@ -5,7 +5,6 @@ import Navbar from '@/components/Navbar';
 import NotificationsPanel from '@/components/NotificationsPanel';
 import AuthModal from '@/components/AuthModal';
 import ToastNotifications from '@/components/ToastNotifications';
-import DebugPanel from '@/components/DebugPanel';
 import Home from '@/pages/Home';
 import Reservations from '@/pages/Reservations';
 import Trips from '@/pages/Trips';
@@ -13,7 +12,7 @@ import Alertes from '@/pages/Alertes';
 import Profil from '@/pages/Profil';
 
 function AppShell({ children }: { children: React.ReactNode }) {
-  const { notifications, dismissNotification } = useApp();
+  const { notifications, markAsRead } = useApp();
 
   // Detect page reloads/navigation
   useEffect(() => {
@@ -34,9 +33,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
       <AuthModal />
       <ToastNotifications
         notifications={notifications.filter(n => !n.read).slice(0, 4)}
-        onDismiss={dismissNotification}
+        onDismiss={markAsRead}
       />
-      <DebugPanel />
     </div>
   );
 }

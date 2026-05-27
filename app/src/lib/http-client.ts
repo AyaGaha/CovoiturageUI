@@ -58,8 +58,9 @@ class HttpClient {
       console.log('⚠️ [HttpClient] 401 Error detected on:', config.url);
       
       // Don't attempt refresh for auth endpoints (login/register always return 401 on invalid credentials)
-      const isAuthEndpoint = config.url?.includes('/auth/login') || 
-                             config.url?.includes('/auth/register');
+      const isAuthEndpoint = config.url?.includes('/auth/login') ||
+                             config.url?.includes('/auth/register') ||
+                             config.url?.includes('/auth/refresh');
       
       if (isAuthEndpoint) {
         console.log('🔐 [HttpClient] Auth endpoint detected - no refresh needed');
@@ -78,7 +79,7 @@ class HttpClient {
           const refreshToken = localStorage.getItem('refreshToken');
           console.log('🔑 [HttpClient] RefreshToken found:', refreshToken ? 'YES' : 'NO');
           
-          if (!refreshToken) {
+          if (!refreshToken || refreshToken === 'undefined' || refreshToken === 'null') {
             console.error('❌ [HttpClient] No refresh token in localStorage - clearing auth');
             this.clearAuth();
             return Promise.reject(error);
@@ -89,12 +90,18 @@ class HttpClient {
             refreshToken,
           });
 
-          const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
+          const newAccessToken = response.data?.accessToken as string | undefined;
+          const newRefreshToken = (response.data?.refreshToken as string | undefined) ?? refreshToken;
+          if (!newAccessToken) {
+            throw new Error('Refresh response missing accessToken');
+          }
           console.log('✅ [HttpClient] Token refresh succeeded!');
           console.log('✅ [HttpClient] New access token received:', newAccessToken.substring(0, 20) + '...');
           
           localStorage.setItem('accessToken', newAccessToken);
-          localStorage.setItem('refreshToken', newRefreshToken);
+          if (newRefreshToken) {
+            localStorage.setItem('refreshToken', newRefreshToken);
+          }
           console.log('💾 [HttpClient] New tokens saved to localStorage');
 
           this.isRefreshing = false;
@@ -109,8 +116,13 @@ class HttpClient {
           console.error('❌ [HttpClient] Token refresh failed:', refreshError);
           this.isRefreshing = false;
           this.processQueue(refreshError, null);
-          console.log('🚨 [HttpClient] Clearing auth and redirecting to home');
-          this.clearAuth();
+          const refreshStatus = (refreshError as AxiosError).response?.status;
+          if (refreshStatus === 401 || refreshStatus === 403) {
+            console.log('🚨 [HttpClient] Refresh token invalid - clearing auth and redirecting to home');
+            this.clearAuth();
+          } else {
+            console.warn('⚠️ [HttpClient] Refresh failed due to temporary error, keeping session data');
+          }
           return Promise.reject(refreshError);
         }
       } else {
@@ -203,3 +215,4 @@ class HttpClient {
 
 export const httpClient = new HttpClient();
 export default httpClient;
+

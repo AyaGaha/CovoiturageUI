@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { MapPin, Calendar, Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import TripCard from '@/components/TripCard';
@@ -279,7 +279,18 @@ function FiltersSidebar({
 }
 
 export default function Home() {
-  const { searchTrips, tripsLoading, createBooking } = useApp();
+  const { searchTrips, tripsLoading, createBooking, trips } = useApp();
+  const PAGE_SIZE = 6;
+  type SearchQuery = {
+    departure: string;
+    destination: string;
+    date: string;
+    rangeDays?: number;
+    maxPrice?: number;
+    minSeats?: number;
+    sortBy: 'date' | 'price' | 'driverRating';
+    sortOrder: 'ASC' | 'DESC';
+  };
   const today = new Date().toISOString().split('T')[0];
   const [departure, setDeparture] = useState('');
   const [destination, setDestination] = useState('');
@@ -299,48 +310,76 @@ export default function Home() {
   const [endCursor, setEndCursor] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const isInitialSearchInFlightRef = useRef(false);
+  const lastSearchQueryRef = useRef<SearchQuery | null>(null);
 
   const handleSearch = useCallback(async () => {
-    setIsSearching(true);
-    const { trips: found, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips(
+    const query: SearchQuery = {
       departure,
       destination,
       date,
-      rangeDays ? Number(rangeDays) : undefined,
-      maxPrice ? Number(maxPrice) : undefined,
-      minSeats ? Number(minSeats) : undefined,
+      rangeDays: rangeDays ? Number(rangeDays) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      minSeats: minSeats ? Number(minSeats) : undefined,
       sortBy,
       sortOrder,
-    );
-    setResults(Array.isArray(found) ? found : []);
-    setHasNextPage(more);
-    setEndCursor(cursor);
-    setTotalCount(count);
-    setHasSearched(true);
-    setIsSearching(false);
-  }, [departure, destination, date, rangeDays, maxPrice, minSeats, sortBy, sortOrder, searchTrips]);
+    };
+    lastSearchQueryRef.current = query;
+
+    setIsSearching(true);
+    try {
+      const { trips: found, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips(
+        query.departure,
+        query.destination,
+        query.date,
+        query.rangeDays,
+        query.maxPrice,
+        query.minSeats,
+        query.sortBy,
+        query.sortOrder,
+        PAGE_SIZE,
+      );
+      setResults(Array.isArray(found) ? found : []);
+      setHasNextPage(more);
+      setEndCursor(cursor);
+      setTotalCount(count);
+      setHasSearched(true);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [departure, destination, date, rangeDays, maxPrice, minSeats, sortBy, sortOrder, searchTrips, PAGE_SIZE]);
 
   const handleLoadMore = useCallback(async () => {
-    if (!hasNextPage || !endCursor) return;
+    const query = lastSearchQueryRef.current;
+    if (!hasNextPage || !endCursor || !query) return;
+
     setIsLoadingMore(true);
-    const { trips: more, hasNextPage: nextPage, endCursor: nextCursor, totalCount: count } = await searchTrips(
-      departure,
-      destination,
-      date,
-      rangeDays ? Number(rangeDays) : undefined,
-      maxPrice ? Number(maxPrice) : undefined,
-      minSeats ? Number(minSeats) : undefined,
-      sortBy,
-      sortOrder,
-      undefined,
-      endCursor,
-    );
-    setResults(prev => [...prev, ...(Array.isArray(more) ? more : [])]);
-    setHasNextPage(nextPage);
-    setEndCursor(nextCursor);
-    setTotalCount(count);
-    setIsLoadingMore(false);
-  }, [departure, destination, date, rangeDays, maxPrice, minSeats, sortBy, sortOrder, endCursor, hasNextPage, searchTrips]);
+    try {
+      const { trips: more, hasNextPage: nextPage, endCursor: nextCursor, totalCount: count } = await searchTrips(
+        query.departure,
+        query.destination,
+        query.date,
+        query.rangeDays,
+        query.maxPrice,
+        query.minSeats,
+        query.sortBy,
+        query.sortOrder,
+        PAGE_SIZE,
+        endCursor,
+      );
+      setResults(prev => {
+        const incoming = Array.isArray(more) ? more : [];
+        const knownIds = new Set(prev.map(t => t.id));
+        const uniqueIncoming = incoming.filter(t => !knownIds.has(t.id));
+        return [...prev, ...uniqueIncoming];
+      });
+      setHasNextPage(nextPage && Array.isArray(more) && more.length > 0);
+      setEndCursor(nextCursor);
+      setTotalCount(count);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [endCursor, hasNextPage, searchTrips, PAGE_SIZE]);
 
   const handleResetFilters = useCallback(() => {
     setRangeDays('');
@@ -358,21 +397,140 @@ export default function Home() {
     setBookingTrip(null);
   }, [bookingTrip, createBooking]);
 
-  // Auto-search on mount to show all trips
+  // Auto-search once when public trips are ready.
   useEffect(() => {
-    (async () => {
-      setIsSearching(true);
-      const { trips: allTrips, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips('', '', '', undefined, undefined, undefined, sortBy, sortOrder);
-      setResults(Array.isArray(allTrips) ? allTrips : []);
-      setHasNextPage(more);
-      setEndCursor(cursor);
-      setTotalCount(count);
-      setHasSearched(true);
-      setIsSearching(false);
-    })();
-  }, []); // run once on mount only
+    if (hasSearched || isInitialSearchInFlightRef.current) {
+      return;
+    }
 
-  const loading = isSearching || tripsLoading;
+    if (tripsLoading && trips.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    isInitialSearchInFlightRef.current = true;
+
+    const runInitialSearch = async () => {
+      const query: SearchQuery = {
+        departure: '',
+        destination: '',
+        date: '',
+        rangeDays: undefined,
+        maxPrice: undefined,
+        minSeats: undefined,
+        sortBy,
+        sortOrder,
+      };
+      lastSearchQueryRef.current = query;
+
+      setIsSearching(true);
+      try {
+        const { trips: allTrips, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips(
+          query.departure,
+          query.destination,
+          query.date,
+          query.rangeDays,
+          query.maxPrice,
+          query.minSeats,
+          query.sortBy,
+          query.sortOrder,
+          PAGE_SIZE,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setResults(Array.isArray(allTrips) ? allTrips : []);
+        setHasNextPage(more);
+        setEndCursor(cursor);
+        setTotalCount(count);
+        setHasSearched(true);
+      } catch (error) {
+        console.error('Initial trips search failed:', error);
+      } finally {
+        isInitialSearchInFlightRef.current = false;
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    void runInitialSearch();
+
+    return () => {
+      cancelled = true;
+      isInitialSearchInFlightRef.current = false;
+    };
+  }, [hasSearched, searchTrips, sortBy, sortOrder, tripsLoading, trips.length, PAGE_SIZE]);
+
+  // Keep displayed list in sync when public trips update (e.g., after creating a new trip)
+  useEffect(() => {
+    const hasCustomFilters = !!departure || !!destination || !!rangeDays || !!maxPrice || !!minSeats;
+    if (!hasSearched || hasCustomFilters || isSearching) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshVisibleTrips = async () => {
+      const query: SearchQuery = {
+        departure: '',
+        destination: '',
+        date: '',
+        rangeDays: undefined,
+        maxPrice: undefined,
+        minSeats: undefined,
+        sortBy,
+        sortOrder,
+      };
+      lastSearchQueryRef.current = query;
+
+      try {
+        const { trips: allTrips, hasNextPage: more, endCursor: cursor, totalCount: count } = await searchTrips(
+          query.departure,
+          query.destination,
+          query.date,
+          query.rangeDays,
+          query.maxPrice,
+          query.minSeats,
+          query.sortBy,
+          query.sortOrder,
+          PAGE_SIZE,
+        );
+
+        if (cancelled) return;
+
+        setResults(Array.isArray(allTrips) ? allTrips : []);
+        setHasNextPage(more);
+        setEndCursor(cursor);
+        setTotalCount(count);
+      } catch (error) {
+        console.error('Failed to refresh visible trips after update:', error);
+      }
+    };
+
+    void refreshVisibleTrips();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    hasSearched,
+    departure,
+    destination,
+    rangeDays,
+    maxPrice,
+    minSeats,
+    isSearching,
+    sortBy,
+    sortOrder,
+    searchTrips,
+    PAGE_SIZE,
+    trips,
+  ]);
+
+  const loading = isSearching || (tripsLoading && !hasSearched);
 
   return (
     <div className="animate-fade-in">
@@ -430,7 +588,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold text-white">
                 {hasSearched
-                  ? `Trajets disponibles${totalCount > 0 ? ` (${totalCount})` : ''}`
+                  ? `Trajets disponibles${!loading && totalCount > 0 ? ` (${totalCount})` : ''}`
                   : 'Trajets disponibles'}
               </h2>
               {loading && (
@@ -439,17 +597,9 @@ export default function Home() {
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="card-surface rounded-2xl p-5 space-y-4 animate-pulse">
-                    <div className="h-5 bg-white/[0.06] rounded w-3/4" />
-                    <div className="h-px bg-white/[0.04]" />
-                    <div className="h-4 bg-white/[0.06] rounded w-1/2" />
-                    <div className="h-4 bg-white/[0.06] rounded w-full" />
-                    <div className="h-px bg-white/[0.04]" />
-                    <div className="h-10 bg-white/[0.06] rounded-xl" />
-                  </div>
-                ))}
+              <div className="flex flex-col items-center justify-center py-16">
+                <span className="w-8 h-8 border-2 border-covoit-orange/30 border-t-covoit-orange rounded-full animate-spin mb-3" />
+                <p className="text-covoit-text-secondary">Chargement des trajets...</p>
               </div>
             ) : hasSearched && results.length === 0 ? (
               <div className="text-center py-16">

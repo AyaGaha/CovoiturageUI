@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Mail, Phone, Star, Save, Lock, User, Shield } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import UserAvatar from '@/components/UserAvatar';
@@ -37,15 +37,38 @@ function ReviewCard({ review }: { review: typeof mockReviews[0] }) {
 }
 
 export default function Profil() {
-  const { currentUser, updateProfile } = useApp();
-  const [name, setName] = useState(currentUser.name);
-  const [email, setEmail] = useState(currentUser.email);
-  const [phone, setPhone] = useState(currentUser.phone);
+  const { currentUser, updateProfile, changePassword } = useApp();
+  const [name, setName] = useState(currentUser?.name || '');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [error, setError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [showPasswordSection, setShowPasswordSection] = useState(false);
+
+  // Redirect if not authenticated
+  if (!currentUser) {
+    return (
+      <div className="max-w-[800px] mx-auto px-6 py-10">
+        <div className="text-center">
+          <p className="text-covoit-text-secondary mb-4">Veuillez vous connecter pour accéder à votre profil</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Sync form fields when currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      setName(currentUser.name || '');
+      setEmail(currentUser.email || '');
+      setPhone(currentUser.phone || '');
+    }
+  }, [currentUser?.id]); // Depend on ID to detect user changes
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,9 +77,6 @@ export default function Profil() {
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
       await updateProfile({ name, email, phone });
-      setCurrentPassword('');
-      setNewPassword('');
-      setShowPasswordSection(false);
     } catch (err: any) {
       // Extract error message
       let errorMessage = 'Erreur lors de la mise à jour';
@@ -74,6 +94,48 @@ export default function Profil() {
       setError(errorMessage);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    setPasswordError('');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('Tous les champs du mot de passe sont obligatoires.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Le nouveau mot de passe et sa confirmation ne correspondent pas.');
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setPasswordError('Le nouveau mot de passe doit etre different de l\'actuel.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      await changePassword(currentPassword, newPassword, confirmPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowPasswordSection(false);
+    } catch (err: any) {
+      let errorMessage = 'Erreur lors de la modification du mot de passe';
+
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      setPasswordError(errorMessage);
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -183,7 +245,10 @@ export default function Profil() {
               {/* Password Section Toggle */}
               <button
                 type="button"
-                onClick={() => setShowPasswordSection(!showPasswordSection)}
+                onClick={() => {
+                  setShowPasswordSection(!showPasswordSection);
+                  setPasswordError('');
+                }}
                 className="flex items-center gap-2 text-sm text-covoit-orange hover:underline"
               >
                 <Lock size={14} />
@@ -192,6 +257,11 @@ export default function Profil() {
 
               {showPasswordSection && (
                 <div className="space-y-4 p-4 rounded-xl bg-covoit-bg-tertiary">
+                  {passwordError && (
+                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-300/90">
+                      {passwordError}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-covoit-text-secondary mb-1.5">
                       Mot de passe actuel
@@ -200,7 +270,7 @@ export default function Profil() {
                       type="password"
                       value={currentPassword}
                       onChange={e => setCurrentPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="********"
                       className="input-field"
                     />
                   </div>
@@ -212,10 +282,31 @@ export default function Profil() {
                       type="password"
                       value={newPassword}
                       onChange={e => setNewPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="********"
                       className="input-field"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-covoit-text-secondary mb-1.5">
+                      Confirmer le nouveau mot de passe
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="********"
+                      className="input-field"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePasswordChange}
+                    disabled={isChangingPassword}
+                    className="btn-primary flex items-center gap-2 py-2.5 px-5 disabled:opacity-50"
+                  >
+                    <Lock size={16} />
+                    {isChangingPassword ? 'Modification...' : 'Modifier le mot de passe'}
+                  </button>
                 </div>
               )}
 

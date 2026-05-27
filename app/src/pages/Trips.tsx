@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Route,
   Calendar,
@@ -22,6 +22,7 @@ import type { Trip } from '@/types';
 import type { CreateTripRequest, UpdateTripRequest } from '@/services/trips';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useLocation } from 'react-router';
 
 function StatCard({
   label,
@@ -47,7 +48,7 @@ function StatCard({
   );
 }
 
-function TripRequestsPanel({ tripId }: { tripId: number }) {
+function TripRequestsPanel({ tripId, highlightedBookingId }: { tripId: number; highlightedBookingId?: number }) {
   const { bookingRequests, confirmBooking, rejectBooking } = useApp();
   const [processingId, setProcessingId] = useState<number | null>(null);
 
@@ -78,7 +79,9 @@ function TripRequestsPanel({ tripId }: { tripId: number }) {
       {requests.map(request => (
         <div
           key={request.id}
-          className="flex flex-col sm:flex-row sm:items-center gap-3 bg-covoit-bg-tertiary rounded-xl p-4"
+          className={`flex flex-col sm:flex-row sm:items-center gap-3 bg-covoit-bg-tertiary rounded-xl p-4 ${
+            highlightedBookingId === request.id ? 'ring-2 ring-covoit-orange/70' : ''
+          }`}
         >
           <div className="flex items-center gap-3 flex-1">
             <UserAvatar name={request.passenger?.name ?? 'Passager'} size={36} />
@@ -113,9 +116,29 @@ function TripRequestsPanel({ tripId }: { tripId: number }) {
   );
 }
 
-function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; onEdit: (trip: Trip) => void; onDelete: (tripId: number) => void; isDeleting: boolean }) {
+function DriverTripCard({
+  trip,
+  onEdit,
+  onDelete,
+  isDeleting,
+  autoExpand,
+  highlightedBookingId,
+}: {
+  trip: Trip;
+  onEdit: (trip: Trip) => void;
+  onDelete: (tripId: number) => void;
+  isDeleting: boolean;
+  autoExpand?: boolean;
+  highlightedBookingId?: number;
+}) {
   const [expanded, setExpanded] = useState(false);
   const availableSeats = trip.seats - trip.seatsBooked;
+
+  useEffect(() => {
+    if (autoExpand) {
+      setExpanded(true);
+    }
+  }, [autoExpand]);
 
   const statusColor =
     trip.status === 'active'
@@ -125,7 +148,7 @@ function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; on
       : 'bg-covoit-text-muted/15 text-covoit-text-muted';
 
   return (
-    <div className="card-surface p-5">
+    <div className="card-surface p-5" id={`trip-card-${trip.id}`}>
       {/* Trip Header */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-4">
         <div className="flex-1">
@@ -198,7 +221,7 @@ function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; on
         {expanded && (
           <>
             <div className="h-px bg-white/[0.04] my-4" />
-            <TripRequestsPanel tripId={trip.id} />
+            <TripRequestsPanel tripId={trip.id} highlightedBookingId={highlightedBookingId} />
           </>
         )}
       </div>
@@ -207,12 +230,29 @@ function DriverTripCard({ trip, onEdit, onDelete, isDeleting }: { trip: Trip; on
 }
 
 export default function Trips() {
+  const location = useLocation();
   const { driverTrips, createTrip, updateTrip, cancelTrip } = useApp();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
+  const params = new URLSearchParams(location.search);
+  const focusTripId = Number(params.get('tripId'));
+  const focusBookingId = Number(params.get('bookingId'));
+  const hasFocusTrip = Number.isFinite(focusTripId) && focusTripId > 0;
+  const hasFocusBooking = Number.isFinite(focusBookingId) && focusBookingId > 0;
+
+  useEffect(() => {
+    if (!hasFocusTrip) {
+      return;
+    }
+
+    const node = document.getElementById(`trip-card-${focusTripId}`);
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [focusTripId, hasFocusTrip, driverTrips]);
 
   const handleCreateTrip = async (data: CreateTripRequest) => {
     setIsLoading(true);
@@ -318,6 +358,8 @@ export default function Trips() {
               onEdit={handleEditTrip}
               onDelete={handleDeleteTrip}
               isDeleting={isDeletingId === trip.id}
+              autoExpand={hasFocusTrip && trip.id === focusTripId}
+              highlightedBookingId={hasFocusBooking && trip.id === focusTripId ? focusBookingId : undefined}
             />
           ))}
         </div>

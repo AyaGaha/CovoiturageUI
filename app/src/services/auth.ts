@@ -43,6 +43,16 @@ export interface RefreshTokenRequest {
   refreshToken: string;
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ChangePasswordResponse {
+  message: string;
+}
+
 export const authService = {
   /**
    * Register a new user
@@ -52,6 +62,7 @@ export const authService = {
     if (response.data.accessToken && response.data.refreshToken) {
       httpClient.setAuthToken(response.data.accessToken);
       httpClient.setRefreshToken(response.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
     }
     return response.data;
   },
@@ -94,15 +105,32 @@ export const authService = {
   },
 
   /**
+   * Change password
+   */
+  changePassword: async (data: ChangePasswordRequest): Promise<ChangePasswordResponse> => {
+    console.log('🔐 [authService] POST /auth/change-password');
+    try {
+      const response = await httpClient.post(apiConfig.endpoints.auth.changePassword, data);
+      console.log('✅ [authService] Password changed successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ [authService] Change password failed:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Refresh access token
    */
   refreshToken: async (refreshToken: string): Promise<AuthResponse> => {
     const response = await httpClient.post(apiConfig.endpoints.auth.refresh, {
       refreshToken,
     });
-    if (response.data.accessToken && response.data.refreshToken) {
+    if (response.data.accessToken) {
       httpClient.setAuthToken(response.data.accessToken);
-      httpClient.setRefreshToken(response.data.refreshToken);
+      if (response.data.refreshToken) {
+        httpClient.setRefreshToken(response.data.refreshToken);
+      }
     }
     return response.data;
   },
@@ -136,3 +164,4 @@ export const authService = {
     return localStorage.getItem('refreshToken');
   },
 };
+
