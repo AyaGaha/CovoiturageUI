@@ -120,6 +120,7 @@ function DriverTripCard({
   trip,
   onEdit,
   onDelete,
+  onComplete,
   isDeleting,
   autoExpand,
   highlightedBookingId,
@@ -127,6 +128,7 @@ function DriverTripCard({
   trip: Trip;
   onEdit: (trip: Trip) => void;
   onDelete: (tripId: number) => void;
+  onComplete: (tripId: number) => void;
   isDeleting: boolean;
   autoExpand?: boolean;
   highlightedBookingId?: number;
@@ -176,6 +178,11 @@ function DriverTripCard({
               <MapPin size={13} className="text-covoit-text-muted" />
               {trip.carModel}
             </span>
+            {trip.description && (
+  <p className="mt-2 text-sm text-covoit-text-secondary">
+    {trip.description}
+  </p>
+)}
           </div>
         </div>
 
@@ -199,6 +206,16 @@ function DriverTripCard({
               title="Annuler le trajet"
             >
               <Trash2 size={16} />
+            </button>
+          )}
+          {trip.status === 'active' && (
+            <button
+              onClick={() => onComplete(trip.id)}
+              disabled={isDeleting}
+              className="p-2 rounded-lg bg-covoit-bg-tertiary text-covoit-success hover:bg-covoit-success/10 transition-colors disabled:opacity-50"
+              title="Marquer comme terminé"
+            >
+              <CheckCircle size={16} />
             </button>
           )}
           {trip.status === 'active' && (
@@ -231,7 +248,7 @@ function DriverTripCard({
 
 export default function Trips() {
   const location = useLocation();
-  const { driverTrips, createTrip, updateTrip, cancelTrip } = useApp();
+  const { driverTrips, createTrip, updateTrip, cancelTrip, completeTrip, tripStats } = useApp();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -244,10 +261,7 @@ export default function Trips() {
   const hasFocusBooking = Number.isFinite(focusBookingId) && focusBookingId > 0;
 
   useEffect(() => {
-    if (!hasFocusTrip) {
-      return;
-    }
-
+    if (!hasFocusTrip) return;
     const node = document.getElementById(`trip-card-${focusTripId}`);
     if (node) {
       node.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -292,12 +306,35 @@ export default function Trips() {
     }
   };
 
-  const stats = {
+  const handleCompleteTrip = async (tripId: number) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir marquer ce trajet comme terminé ?')) {
+      return;
+    }
+    setIsDeletingId(tripId);
+    try {
+      await completeTrip(tripId);
+    } finally {
+      setIsDeletingId(null);
+    }
+  };
+
+  // Fallback local si GraphQL tripsStats n'est pas encore chargé
+  const localStats = {
     total: driverTrips.length,
     active: driverTrips.filter(t => t.status === 'active').length,
     completed: driverTrips.filter(t => t.status === 'completed').length,
     cancelled: driverTrips.filter(t => t.status === 'cancelled').length,
   };
+
+  // Utilise les stats GraphQL si disponibles, sinon fallback local
+  const stats = tripStats
+    ? {
+        total: tripStats.totalTrips,
+        active: tripStats.activeTrips,
+        completed: tripStats.completedTrips,
+        cancelled: tripStats.cancelledTrips,
+      }
+    : localStats;
 
   return (
     <div className="max-w-[900px] mx-auto px-6 py-10 animate-fade-in">
@@ -357,6 +394,7 @@ export default function Trips() {
               trip={trip}
               onEdit={handleEditTrip}
               onDelete={handleDeleteTrip}
+              onComplete={handleCompleteTrip}
               isDeleting={isDeletingId === trip.id}
               autoExpand={hasFocusTrip && trip.id === focusTripId}
               highlightedBookingId={hasFocusBooking && trip.id === focusTripId ? focusBookingId : undefined}

@@ -10,6 +10,7 @@ import Reservations from '@/pages/Reservations';
 import Trips from '@/pages/Trips';
 import Alertes from '@/pages/Alertes';
 import Profil from '@/pages/Profil';
+import TripDetails from '@/pages/TripDetails';
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const { notifications, markAsRead } = useApp();
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/reservations" element={<Reservations />} />
           <Route path="/trips" element={<Trips />} />
+          <Route path="/trip/:id" element={<TripDetails />} />
           <Route path="/alertes" element={<Alertes />} />
           <Route path="/profil" element={<Profil />} />
         </Routes>

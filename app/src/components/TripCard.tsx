@@ -8,7 +8,7 @@ import { usersService } from '@/services/users';
 import type { UserProfile } from '@/services/users';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-
+import { useNavigate } from 'react-router-dom';
 interface TripCardProps {
   trip: Trip;
   onBook?: (tripId: number) => void;
@@ -25,6 +25,7 @@ export default function TripCard({ trip, onBook, isBooking = false }: TripCardPr
   const driverName = trip.driver?.name ?? 'Conducteur';
   const driverRating = trip.driver?.rating ?? 0;
   const driverId = trip.driver?.id;
+  const navigate = useNavigate();
 
   const handleOpenDriverProfile = async () => {
     if (!driverId) {
@@ -48,7 +49,10 @@ export default function TripCard({ trip, onBook, isBooking = false }: TripCardPr
 
   return (
     <>
-      <div className="card-surface card-hover p-5 flex flex-col gap-4">
+      <div
+  onClick={() => navigate(`/trip/${trip.id}`)}
+  className="card-surface card-hover p-5 flex flex-col gap-4 cursor-pointer"
+  >
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <p className="text-lg font-semibold text-white">{trip.departure}</p>
@@ -108,15 +112,16 @@ export default function TripCard({ trip, onBook, isBooking = false }: TripCardPr
           </div>
         </div>
 
-        {onBook && (
-          <button
-            onClick={() => onBook(trip.id)}
-            disabled={isBooking}
-            className="w-full btn-primary py-3 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isBooking ? 'Reservation en cours...' : 'Reserver'}
-          </button>
-        )}
+       <button
+  onClick={(e) => {
+    e.stopPropagation(); 
+    onBook?.(trip.id);
+  }}
+  disabled={isBooking}
+  className="w-full btn-primary py-3 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  {isBooking ? 'Reservation en cours...' : 'Reserver'}
+</button>
       </div>
 
       <Modal open={profileOpen} onClose={() => setProfileOpen(false)} title="Profil public conducteur">

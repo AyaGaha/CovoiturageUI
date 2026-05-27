@@ -10,7 +10,7 @@ import {
   mockBookingRequests,
 } from '@/data/mockData';
 import { authService } from '@/services/auth';
-import { tripsService } from '@/services/trips';
+import { tripsService, type TripStatsResponse } from '@/services/trips';
 import { bookingsService } from '@/services/bookings';
 import { alertsService } from '@/services/alerts';
 import { usersService } from '@/services/users';
@@ -33,21 +33,23 @@ interface AppContextType {
   trips: Trip[];
   driverTrips: Trip[];
   tripsLoading: boolean;
+  tripStats: TripStatsResponse | null;
   searchTrips: (
-  departure: string,
-  destination: string,
-  date: string,
-  rangeDays?: number,
-  maxPrice?: number,
-  minSeats?: number,
-  sortBy?: 'date' | 'price' | 'driverRating',
-  sortOrder?: 'ASC' | 'DESC',
-  first?: number,
-  after?: string,
-) => Promise<{ trips: Trip[]; hasNextPage: boolean; endCursor: string | null; totalCount: number }>;
+    departure: string,
+    destination: string,
+    date: string,
+    rangeDays?: number,
+    maxPrice?: number,
+    minSeats?: number,
+    sortBy?: 'date' | 'price' | 'driverRating',
+    sortOrder?: 'ASC' | 'DESC',
+    first?: number,
+    after?: string,
+  ) => Promise<{ trips: Trip[]; hasNextPage: boolean; endCursor: string | null; totalCount: number }>;
   createTrip: (data: any) => Promise<Trip>;
   updateTrip: (tripId: number, data: any) => Promise<Trip>;
   cancelTrip: (tripId: number) => Promise<void>;
+  completeTrip: (tripId: number) => Promise<void>;
 
   // Bookings
   bookings: Booking[];
@@ -164,6 +166,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Trips
   const [trips, setTrips] = useState<Trip[]>(() => readCachedTrips());
   const [driverTripsState, setDriverTripsState] = useState<Trip[]>([]);
+  const [tripStats, setTripStats] = useState<TripStatsResponse | null>(null);
   const [tripsLoading, setTripsLoading] = useState(false);
 
   // Bookings
@@ -193,7 +196,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     localStorage.setItem('authModalOpen', authModal.toString());
     if (!authModal) {
-      // Clear error data when modal is fully closed
       localStorage.removeItem('authModalError');
       localStorage.removeItem('authModalEmail');
       localStorage.removeItem('authModalPassword');
@@ -250,7 +252,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // Notification functions - defined early so they can be used in callbacks
   const addNotification = useCallback((notification: Omit<Notification, 'id' | 'createdAt' | 'read'>) => {
     const newNotification: Notification = {
       ...notification,
@@ -295,11 +296,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [addNotification]);
 
   // Load all trips on app mount (for search page)
-useEffect(() => {
+  useEffect(() => {
     const loadPublicTrips = async () => {
       try {
         setTripsLoading(true);
-        // Use GraphQL query for upcoming trips
         const trips = await withTimeout(
           tripsService.getUpcomingTripsGraphQL(1, 50),
           PUBLIC_TRIPS_TIMEOUT_MS,
@@ -310,7 +310,6 @@ useEffect(() => {
         persistTripsCache(resolvedTrips);
       } catch (error) {
         console.error('Failed to load trips:', error);
-        // Fallback to mockData if API fails
         const fallbackTrips = mockTrips.map(normalizeTrip);
         setTrips(fallbackTrips);
         persistTripsCache(fallbackTrips);
@@ -335,6 +334,14 @@ useEffect(() => {
           const myTrips = await tripsService.getMyTrips();
           setDriverTripsState(myTrips.map(normalizeTrip));
 
+          // Load trip stats via GraphQL (fallback local dans Trips.tsx)
+          try {
+            const stats = await tripsService.getTripStats();
+            setTripStats(stats);
+          } catch (error) {
+            console.warn('Failed to load trip stats, will use local fallback:', error);
+          }
+
           // Load bookings
           await loadBookings();
 
@@ -342,7 +349,6 @@ useEffect(() => {
           await loadAlerts();
         } catch (error) {
           console.error('Failed to initialize app:', error);
-          // Fall back gracefully
         }
       }
     };
@@ -430,7 +436,6 @@ useEffect(() => {
     }
   };
 
-  // Initial seed of pending booking requests for the current driver's trips.
   useEffect(() => {
     void loadInitialBookingRequests();
   }, [isAuthenticated, driverTripsState]);
@@ -450,9 +455,7 @@ useEffect(() => {
     let fallbackPollingId: number | null = null;
 
     const startFallbackPolling = () => {
-      if (fallbackPollingId !== null) {
-        return;
-      }
+      if (fallbackPollingId !== null) return;
       fallbackPollingId = window.setInterval(() => {
         void loadInitialBookingRequests(true);
       }, 5000);
@@ -473,30 +476,19 @@ useEffect(() => {
       try {
         const parsed = JSON.parse(event.data);
         const booking = extractBookingFromSseMessage(parsed);
-        if (!booking) {
-          return;
-        }
+        if (!booking) return;
 
         const status = String(booking.status ?? 'pending').toLowerCase();
-        if (status !== 'pending') {
-          return;
-        }
-
-        if (driverTripsState.length === 0) {
-          return;
-        }
+        if (status !== 'pending') return;
+        if (driverTripsState.length === 0) return;
 
         const isForThisDriver = driverTripsState.some(trip => trip.id === booking.tripId);
-        if (!isForThisDriver) {
-          return;
-        }
+        if (!isForThisDriver) return;
 
         let isNewRequest = false;
         setBookingRequests(prev => {
           const exists = prev.some(item => item.id === booking.id);
-          if (exists) {
-            return prev;
-          }
+          if (exists) return prev;
           isNewRequest = true;
           return [booking, ...prev];
         });
@@ -520,7 +512,6 @@ useEffect(() => {
     };
   }, [isAuthenticated, driverTripsState, notifyNewBookingRequest]);
 
-
   const login = useCallback(async (email: string, password: string) => {
     const debugLog = (msg: string) => {
       console.log(msg);
@@ -528,7 +519,7 @@ useEffect(() => {
       logs.push({ time: new Date().toLocaleTimeString(), msg });
       localStorage.setItem('authDebugLogs', JSON.stringify(logs.slice(-50)));
     };
-    
+
     debugLog('🔐 [AppContext] login() called with email: ' + email);
     try {
       setAuthLoading(true);
@@ -540,12 +531,10 @@ useEffect(() => {
       setIsAuthenticated(true);
       debugLog('✅ [AppContext] Closing modal with setAuthModal(false)');
       setAuthModal(false);
-      // Data will be loaded by useEffect when isAuthenticated changes
     } catch (error: any) {
       debugLog('❌ [AppContext] login() failed: ' + error.message);
       debugLog('❌ [AppContext] Error status: ' + error.response?.status);
       debugLog('❌ [AppContext] Error message: ' + error.response?.data?.message);
-      debugLog('❌ [AppContext] Throwing error to AuthModal...');
       throw error;
     } finally {
       setAuthLoading(false);
@@ -559,15 +548,12 @@ useEffect(() => {
       setUserState(response.user as User);
       setIsAuthenticated(true);
       setAuthModal(false);
-      
-      // Show success notification
+
       addNotification({
         type: 'success',
         message: 'Bienvenue sur Wassalni !',
         details: `Compte créé avec succès, ${name.split(' ')[0]}! Connecté automatiquement.`,
       });
-      
-      // Data will be loaded by useEffect when isAuthenticated changes
     } catch (error: any) {
       console.error('Registration failed:', error);
       throw error;
@@ -583,11 +569,11 @@ useEffect(() => {
       setUserState(null);
       setIsAuthenticated(false);
       setDriverTripsState([]);
+      setTripStats(null);
       setBookings([]);
       setAlerts([]);
       notifiedBookingRequestIdsRef.current.clear();
-      
-      // Charger les trajets publics depuis l'API
+
       try {
         const { trips: allTrips } = await tripsService.getTrips();
         const normalizedPublicTrips = allTrips.map(normalizeTrip);
@@ -606,136 +592,136 @@ useEffect(() => {
   }, [addNotification]);
 
   const searchTrips = useCallback(async (
-  departure: string,
-  destination: string,
-  date: string,
-  rangeDays?: number,
-  maxPrice?: number,
-  minSeats?: number,
-  sortBy?: 'date' | 'price' | 'driverRating',
-  sortOrder?: 'ASC' | 'DESC',
-  first?: number,
-  after?: string,
-): Promise<{ trips: Trip[]; hasNextPage: boolean; endCursor: string | null; totalCount: number }> => {
+    departure: string,
+    destination: string,
+    date: string,
+    rangeDays?: number,
+    maxPrice?: number,
+    minSeats?: number,
+    sortBy?: 'date' | 'price' | 'driverRating',
+    sortOrder?: 'ASC' | 'DESC',
+    first?: number,
+    after?: string,
+  ): Promise<{ trips: Trip[]; hasNextPage: boolean; endCursor: string | null; totalCount: number }> => {
 
-  const toDateOnly = (value: string) => value.split('T')[0];
+    const toDateOnly = (value: string) => value.split('T')[0];
 
-  const filterTrips = (items: Trip[]) => {
-    return items.filter(trip => {
-      const matchDeparture = !departure || trip.departure.toLowerCase().includes(departure.toLowerCase());
-      const matchDestination = !destination || trip.destination.toLowerCase().includes(destination.toLowerCase());
-      let matchDate = true;
-      if (date) {
-        if (rangeDays !== undefined) {
-          const center = new Date(date);
-          const from = new Date(center); from.setDate(from.getDate() - rangeDays); from.setHours(0,0,0,0);
-          const to = new Date(center); to.setDate(to.getDate() + rangeDays); to.setHours(23,59,59,999);
-          const tripDate = new Date(trip.date);
-          matchDate = tripDate >= from && tripDate <= to;
-        } else {
-          matchDate = toDateOnly(trip.date) === toDateOnly(date);
+    const filterTrips = (items: Trip[]) => {
+      return items.filter(trip => {
+        const matchDeparture = !departure || trip.departure.toLowerCase().includes(departure.toLowerCase());
+        const matchDestination = !destination || trip.destination.toLowerCase().includes(destination.toLowerCase());
+        let matchDate = true;
+        if (date) {
+          if (rangeDays !== undefined) {
+            const center = new Date(date);
+            const from = new Date(center); from.setDate(from.getDate() - rangeDays); from.setHours(0, 0, 0, 0);
+            const to = new Date(center); to.setDate(to.getDate() + rangeDays); to.setHours(23, 59, 59, 999);
+            const tripDate = new Date(trip.date);
+            matchDate = tripDate >= from && tripDate <= to;
+          } else {
+            matchDate = toDateOnly(trip.date) === toDateOnly(date);
+          }
         }
-      }
-      const matchPrice = !maxPrice || trip.price <= maxPrice;
-      const matchSeats = !minSeats || (trip.seats - trip.seatsBooked) >= minSeats;
-      return (
-        matchDeparture &&
-        matchDestination &&
-        matchDate &&
-        matchPrice &&
-        matchSeats &&
-        normalizeTripStatus(String(trip.status)) === 'active'
-      );
-    });
-  };
-
-  const sortTrips = (items: Trip[]) => {
-    if (!sortBy) return items;
-    const direction = (sortOrder ?? 'ASC') === 'ASC' ? 1 : -1;
-    return [...items].sort((a, b) => {
-      if (sortBy === 'price') return (a.price - b.price) * direction;
-      if (sortBy === 'driverRating') {
-        const aR = a.driver?.rating ?? (sortOrder === 'ASC' ? Infinity : -Infinity);
-        const bR = b.driver?.rating ?? (sortOrder === 'ASC' ? Infinity : -Infinity);
-        return (aR - bR) * direction;
-      }
-      return (new Date(a.date).getTime() - new Date(b.date).getTime()) * direction;
-    });
-  };
-
-  const applyCursorPagination = (items: Trip[]) => {
-    const pageSize = first ?? 6;
-    const afterIndex = after ? parseInt(after, 10) : NaN;
-    const startIndex = isNaN(afterIndex) ? 0 : afterIndex + 1;
-    const page = items.slice(startIndex, startIndex + pageSize);
-    const endIndex = page.length > 0 ? startIndex + page.length - 1 : null;
-    return {
-      trips: page,
-      hasNextPage: startIndex + pageSize < items.length,
-      endCursor: endIndex === null ? null : String(endIndex),
-      totalCount: items.length,
+        const matchPrice = !maxPrice || trip.price <= maxPrice;
+        const matchSeats = !minSeats || (trip.seats - trip.seatsBooked) >= minSeats;
+        return (
+          matchDeparture &&
+          matchDestination &&
+          matchDate &&
+          matchPrice &&
+          matchSeats &&
+          normalizeTripStatus(String(trip.status)) === 'active'
+        );
+      });
     };
-  };
 
-  const isInitialBrowse =
-    !departure &&
-    !destination &&
-    !date &&
-    rangeDays === undefined &&
-    !maxPrice &&
-    !minSeats;
+    const sortTrips = (items: Trip[]) => {
+      if (!sortBy) return items;
+      const direction = (sortOrder ?? 'ASC') === 'ASC' ? 1 : -1;
+      return [...items].sort((a, b) => {
+        if (sortBy === 'price') return (a.price - b.price) * direction;
+        if (sortBy === 'driverRating') {
+          const aR = a.driver?.rating ?? (sortOrder === 'ASC' ? Infinity : -Infinity);
+          const bR = b.driver?.rating ?? (sortOrder === 'ASC' ? Infinity : -Infinity);
+          return (aR - bR) * direction;
+        }
+        return (new Date(a.date).getTime() - new Date(b.date).getTime()) * direction;
+      });
+    };
 
-  if (isInitialBrowse && trips.length > 0) {
-    const filtered = filterTrips(trips);
-    const sorted = sortTrips(filtered);
-    return applyCursorPagination(sorted);
-  }
+    const applyCursorPagination = (items: Trip[]) => {
+      const pageSize = first ?? 6;
+      const afterIndex = after ? parseInt(after, 10) : NaN;
+      const startIndex = isNaN(afterIndex) ? 0 : afterIndex + 1;
+      const page = items.slice(startIndex, startIndex + pageSize);
+      const endIndex = page.length > 0 ? startIndex + page.length - 1 : null;
+      return {
+        trips: page,
+        hasNextPage: startIndex + pageSize < items.length,
+        endCursor: endIndex === null ? null : String(endIndex),
+        totalCount: items.length,
+      };
+    };
 
-  try {
-    if (date && rangeDays !== undefined) {
-      const response = await withTimeout(
-        tripsService.searchTripsNearDate(date, rangeDays),
-        SEARCH_TRIPS_TIMEOUT_MS,
-        'Search trips near date',
-      );
-      const filtered = filterTrips(response.map(normalizeTrip));
+    const isInitialBrowse =
+      !departure &&
+      !destination &&
+      !date &&
+      rangeDays === undefined &&
+      !maxPrice &&
+      !minSeats;
+
+    if (isInitialBrowse && trips.length > 0) {
+      const filtered = filterTrips(trips);
       const sorted = sortTrips(filtered);
       return applyCursorPagination(sorted);
     }
 
-    const response = await withTimeout(
-      tripsService.searchTrips({
-        departure: departure || undefined,
-        destination: destination || undefined,
-        date: date || undefined,
-        maxPrice: maxPrice || undefined,
-        minSeats: minSeats || undefined,
-        sortBy: sortBy || undefined,
-        sortOrder: sortOrder || undefined,
-        first: first || undefined,
-        after: after || undefined,
-      }),
-      SEARCH_TRIPS_TIMEOUT_MS,
-      'Search trips',
-    );
+    try {
+      if (date && rangeDays !== undefined) {
+        const response = await withTimeout(
+          tripsService.searchTripsNearDate(date, rangeDays),
+          SEARCH_TRIPS_TIMEOUT_MS,
+          'Search trips near date',
+        );
+        const filtered = filterTrips(response.map(normalizeTrip));
+        const sorted = sortTrips(filtered);
+        return applyCursorPagination(sorted);
+      }
 
-    if (response && Array.isArray(response.edges)) {
-      return {
-        trips: response.edges.map(e => normalizeTrip(e.node)),
-        hasNextPage: response.pageInfo?.hasNextPage ?? false,
-        endCursor: response.pageInfo?.endCursor ?? null,
-        totalCount: response.edges.length,
-      };
+      const response = await withTimeout(
+        tripsService.searchTrips({
+          departure: departure || undefined,
+          destination: destination || undefined,
+          date: date || undefined,
+          maxPrice: maxPrice || undefined,
+          minSeats: minSeats || undefined,
+          sortBy: sortBy || undefined,
+          sortOrder: sortOrder || undefined,
+          first: first || undefined,
+          after: after || undefined,
+        }),
+        SEARCH_TRIPS_TIMEOUT_MS,
+        'Search trips',
+      );
+
+      if (response && Array.isArray(response.edges)) {
+        return {
+          trips: response.edges.map(e => normalizeTrip(e.node)),
+          hasNextPage: response.pageInfo?.hasNextPage ?? false,
+          endCursor: response.pageInfo?.endCursor ?? null,
+          totalCount: response.edges.length,
+        };
+      }
+
+      return { trips: [], hasNextPage: false, endCursor: null, totalCount: 0 };
+    } catch (error) {
+      console.error('Search trips failed:', error);
+      const filtered = filterTrips(trips);
+      const sorted = sortTrips(filtered);
+      return applyCursorPagination(sorted);
     }
-
-    return { trips: [], hasNextPage: false, endCursor: null, totalCount: 0 };
-  } catch (error) {
-    console.error('Search trips failed:', error);
-    const filtered = filterTrips(trips);
-    const sorted = sortTrips(filtered);
-    return applyCursorPagination(sorted);
-  }
-}, [trips]);
+  }, [trips]);
 
   const createBooking = useCallback(async (tripId: number) => {
     try {
@@ -880,15 +866,29 @@ useEffect(() => {
     try {
       const createdTrip = normalizeTrip(await tripsService.createTrip(data));
       setDriverTripsState(prev => [createdTrip, ...prev]);
-      if (createdTrip.status === 'active') {
-        setTrips(prev => {
-          const exists = prev.some(t => t.id === createdTrip.id);
-          const next = exists
-            ? prev.map(t => (t.id === createdTrip.id ? createdTrip : t))
-            : [createdTrip, ...prev];
-          persistTripsCache(next);
-          return next;
-        });
+      try {
+  const updatedTrips = await tripsService.getUpcomingTripsGraphQL(1, 50);
+  const normalized = updatedTrips.map(normalizeTrip);
+  setTrips(normalized);
+  persistTripsCache(normalized);
+} catch {
+  if (createdTrip.status === 'active') {
+    setTrips(prev => {
+      const exists = prev.some(t => t.id === createdTrip.id);
+      const next = exists
+        ? prev.map(t => (t.id === createdTrip.id ? createdTrip : t))
+        : [createdTrip, ...prev];
+      persistTripsCache(next);
+      return next;
+    });
+  }
+}
+      // Refresh stats after creating a trip
+      try {
+        const stats = await tripsService.getTripStats();
+        setTripStats(stats);
+      } catch {
+        // Ignore, fallback local sera utilisé
       }
       addNotification({
         type: 'success',
@@ -941,6 +941,13 @@ useEffect(() => {
         persistTripsCache(next);
         return next;
       });
+      // Refresh stats after cancelling a trip
+      try {
+        const stats = await tripsService.getTripStats();
+        setTripStats(stats);
+      } catch {
+        // Ignore, fallback local sera utilisé
+      }
       addNotification({
         type: 'success',
         message: 'Trajet annulé',
@@ -956,13 +963,42 @@ useEffect(() => {
     }
   }, [addNotification]);
 
+  const completeTrip = useCallback(async (tripId: number) => {
+    try {
+      await tripsService.completeTrip(tripId);
+      setDriverTripsState(prev => prev.map(t => (t.id === tripId ? { ...t, status: 'completed' } : t)));
+      setTrips(prev => {
+        const next = prev.map(t => (t.id === tripId ? { ...t, status: 'completed' as const } : t));
+        persistTripsCache(next);
+        return next;
+      });
+      // Refresh stats after completing a trip
+      try {
+        const stats = await tripsService.getTripStats();
+        setTripStats(stats);
+      } catch {
+        // Ignore, fallback local sera utilisé
+      }
+      addNotification({
+        type: 'success',
+        message: 'Trajet marqué comme terminé',
+      });
+    } catch (error: any) {
+      console.error('Complete trip failed:', error);
+      addNotification({
+        type: 'error',
+        message: 'Erreur lors de la finalisation du trajet',
+        details: error.response?.data?.message || 'Impossible de marquer le trajet comme terminé',
+      });
+      throw error;
+    }
+  }, [addNotification]);
 
   const updateProfile = useCallback(async (data: Partial<User>) => {
     try {
       setProfileLoading(true);
       const updated = await usersService.updateProfile(data);
       setUserState(prev => (prev ? { ...prev, ...updated } : updated as User));
-      // Save updated user to localStorage so it persists after page reload
       localStorage.setItem('user', JSON.stringify(updated));
       addNotification({
         type: 'success',
@@ -971,36 +1007,30 @@ useEffect(() => {
       });
     } catch (error: any) {
       console.error('Update profile failed:', error);
-      
-      // Extract detailed error message from backend
+
       let errorMessage = 'Impossible de mettre à jour le profil';
       let errorDetails = '';
-      
+
       if (error.response?.data) {
         const errorData = error.response.data;
-        
-        // Try different error message locations
         if (errorData.message) {
           errorMessage = errorData.message;
         } else if (errorData.error) {
           errorMessage = errorData.error;
         } else if (errorData.errors) {
-          // Handle validation errors (array of errors)
           if (Array.isArray(errorData.errors)) {
             errorMessage = errorData.errors.map((e: any) => e.message || String(e)).join(', ');
           } else {
             errorMessage = JSON.stringify(errorData.errors);
           }
         }
-        
-        // Add status code if available
         if (error.response.status) {
           errorDetails = `(Code: ${error.response.status})`;
         }
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       addNotification({
         type: 'error',
         message: 'Erreur lors de la mise à jour du profil',
@@ -1027,14 +1057,11 @@ useEffect(() => {
       });
     } catch (error: any) {
       console.error('Change password failed:', error);
-      
-      // Extract detailed error message from backend
+
       let errorMessage = 'Impossible de modifier le mot de passe';
-      
+
       if (error.response?.data) {
         const errorData = error.response.data;
-        
-        // Try different error message locations
         if (errorData.message) {
           errorMessage = errorData.message;
         } else if (errorData.error) {
@@ -1049,7 +1076,7 @@ useEffect(() => {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       addNotification({
         type: 'error',
         message: 'Erreur de modification du mot de passe',
@@ -1077,10 +1104,12 @@ useEffect(() => {
         trips,
         driverTrips: driverTripsState,
         tripsLoading,
+        tripStats,
         searchTrips,
         createTrip,
         updateTrip,
         cancelTrip,
+        completeTrip,
         bookings,
         bookingsLoading,
         createBooking,
@@ -1117,4 +1146,3 @@ export function useApp() {
   }
   return context;
 }
-

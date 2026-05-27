@@ -66,8 +66,15 @@ export default function CreateTripModal({ open, onClose, onSubmit, isLoading = f
       });
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Une erreur est survenue');
-    }
+  const backendMessage =
+    err?.response?.data?.message;
+
+  const message = Array.isArray(backendMessage)
+    ? backendMessage[0]
+    : backendMessage;
+
+  setError(message || 'Une erreur est survenue');
+}
   };
 
   return (

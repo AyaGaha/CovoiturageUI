@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader } from 'lucide-react';
 import Modal from './Modal';
 import type { Trip } from '@/types';
@@ -14,15 +14,14 @@ interface EditTripModalProps {
 
 export default function EditTripModal({ open, trip, onClose, onSubmit, isLoading = false }: EditTripModalProps) {
   const [formData, setFormData] = useState<UpdateTripRequest>({
-    price: trip?.price || 10,
-    seats: trip?.seats || 4,
-    description: trip?.description || '',
+    price: 10,
+    seats: 4,
+    description: '',
   });
   const [error, setError] = useState('');
 
-  // Update form when trip changes
-  const handleOpen = () => {
-    if (trip) {
+  useEffect(() => {
+    if (trip && open) {
       setFormData({
         price: trip.price,
         seats: trip.seats,
@@ -30,14 +29,13 @@ export default function EditTripModal({ open, trip, onClose, onSubmit, isLoading
       });
       setError('');
     }
-  };
+  }, [trip, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!trip) return;
     setError('');
 
-    // Validations
     if (formData.seats < 1 || formData.seats > 8) {
       setError('Le nombre de places doit être entre 1 et 8');
       return;
@@ -81,7 +79,6 @@ export default function EditTripModal({ open, trip, onClose, onSubmit, isLoading
           </div>
         )}
 
-        {/* Seats */}
         <div>
           <label className="block text-xs font-medium text-covoit-text-secondary mb-1.5">
             Nombre de places *
@@ -98,7 +95,6 @@ export default function EditTripModal({ open, trip, onClose, onSubmit, isLoading
           />
         </div>
 
-        {/* Price */}
         <div>
           <label className="block text-xs font-medium text-covoit-text-secondary mb-1.5">
             Prix par personne (TND) *
@@ -115,7 +111,6 @@ export default function EditTripModal({ open, trip, onClose, onSubmit, isLoading
           />
         </div>
 
-        {/* Description */}
         <div>
           <label className="block text-xs font-medium text-covoit-text-secondary mb-1.5">
             Description
@@ -129,7 +124,6 @@ export default function EditTripModal({ open, trip, onClose, onSubmit, isLoading
           />
         </div>
 
-        {/* Buttons */}
         <div className="flex gap-3 pt-4">
           <button
             type="button"
