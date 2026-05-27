@@ -214,4 +214,20 @@ export class AuthService {
 
     return this.refreshTokenRepository.save(refreshToken);
   }
+
+  async changePassword(userId: number, currentPassword: string, newPassword: string, confirmPassword: string) {
+    // Verify passwords match
+    if (newPassword !== confirmPassword) {
+      throw new BadRequestException('Les mots de passe ne correspondent pas');
+    }
+
+    // Verify new password is different from current
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur non trouvé');
+    }
+
+    // Use UsersService to change password
+    return this.usersService.changePassword(userId, currentPassword, newPassword);
+  }
 }

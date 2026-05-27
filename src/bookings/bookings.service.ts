@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Booking } from './entities/booking.entity';
 import { Trip } from '../trips/entities/trip.entity';
+import { User } from 'src/users/entities/user.entity';
 
 @Injectable()
 export class BookingsService {
@@ -191,16 +192,26 @@ export class BookingsService {
     return saved;
     }
 
-    async getPendingBookingsForTrip(tripId: number, driverId: number): Promise<Booking[]> {
-    const trip = await this.tripRepo.findOne({ where: { id: tripId } });
-    if (!trip)
-        throw new NotFoundException('Trajet introuvable');
-    if (trip.driverId !== driverId)
-        throw new ForbiddenException('Tu n\'es pas le conducteur de ce trajet');
+    async getPendingBookingsForTrip(tripId: number, driverId: number): Promise<any[]> {
+      const trip = await this.tripRepo.findOne({ where: { id: tripId } });
+      if (!trip) throw new NotFoundException('Trajet introuvable');
+      if (trip.driverId !== driverId) throw new ForbiddenException('Tu n\'es pas le conducteur de ce trajet');
 
-    return this.bookingRepo.find({
+      const bookings = await this.bookingRepo.find({
         where: { tripId, status: 'pending' },
         order: { createdAt: 'ASC' },
-    });
+      });
+
+      const userRepo = this.dataSource.getRepository(User);
+      
+      return Promise.all(
+        bookings.map(async (b) => ({
+          id: b.id,
+          tripId: b.tripId,
+          status: b.status,
+          createdAt: b.createdAt,
+          passenger: await userRepo.findOne({ where: { id: b.passengerId } }),
+        }))
+      );
     }
 }

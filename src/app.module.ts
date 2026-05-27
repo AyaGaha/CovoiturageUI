@@ -42,6 +42,7 @@ import { LoggingMiddleware } from './common/middleware/logging.middleware';
         synchronize: true,
       }),
     }),
+    
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: true,

@@ -1,11 +1,13 @@
-import {Resolver, Query, Args, Int, ResolveField, Parent, Context} from '@nestjs/graphql';
+import { Resolver, Query, Args, Int, ResolveField, Parent, Context } from '@nestjs/graphql';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BookingsService } from './bookings.service';
 import { BookingWithTripType } from './graphql/booking-with-trip.type';
+import { PassengerType } from './graphql/passenger.type';
 import { TripType } from '../trips/graphql/trip.type';
 import { Booking } from './entities/booking.entity';
 import { Trip } from '../trips/entities/trip.entity';
+import { User } from '../users/entities/user.entity';
 import { GqlAuthGuard } from 'src/auth/guards/gql-auth.guard';
 import { UseGuards } from '@nestjs/common';
 
@@ -16,6 +18,8 @@ export class BookingsResolver {
     private readonly bookingsService: BookingsService,
     @InjectRepository(Trip)
     private readonly tripRepo: Repository<Trip>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   @Query(() => [BookingWithTripType])
@@ -29,14 +33,13 @@ export class BookingsResolver {
     return this.bookingsService.getBookingById(id);
   }
 
-  // Liaison Booking → Trip
-  // Appelé automatiquement par GraphQL pour chaque booking retourné
   @ResolveField('trip', () => TripType, { nullable: true })
   async resolveTrip(@Parent() booking: Booking) {
     return this.tripRepo.findOne({ where: { id: booking.tripId } });
   }
 
-  // Le ResolveField('driver') défini dans TripsResolver
-  // s'applique automatiquement sur TripType peu importe d'où il vient —
-  // donc Booking → Trip → Driver est résolu sans rien ajouter ici
+  @ResolveField('passenger', () => PassengerType, { nullable: true })
+  async resolvePassenger(@Parent() booking: Booking) {
+    return this.userRepo.findOne({ where: { id: booking.passengerId } });
+  }
 }

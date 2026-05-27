@@ -4,10 +4,11 @@ import { ReviewsService } from './reviews.service';
 import { DriverStats } from './graphql/driver-stats.type';
 import { TripsService } from '../trips/trips.service';
 import { ReviewType } from './graphql/review.type';
-import { UseGuards } from '@nestjs/common';
+import { ForbiddenException, UseGuards } from '@nestjs/common';
 import { User } from 'src/users/entities/user.entity';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { GqlJwtAuthGuard } from 'src/auth/guards/gql-jwt-auth.guard';
+import { AdminGuard } from 'src/auth/guards/admin.guard';
 
 @Resolver()
 export class ReviewsResolver {
@@ -54,20 +55,29 @@ export class ReviewsResolver {
       };
   }
 
+  /*
   // driver — anonymous
   @Query(() => [ReviewType])
   @UseGuards(GqlJwtAuthGuard)
   async myReviews(@CurrentUser() user: User): Promise<ReviewType[]> {
-    return this.reviewsService.getDriverReviews(user.id);
+    const reviews = await this.reviewsService.getDriverReviews(user.id);
+    return reviews.map(({ passengerId, passenger, ...rest }) => rest as ReviewType);
   }
+  */
 
   // admin — full info
   @Query(() => [ReviewType])
-  @UseGuards(GqlJwtAuthGuard)
-  async driverReviewsAdmin(@Args('driverId', { type: () => Int }) driverId: number,): Promise<ReviewType[]> {
-    return this.reviewsService.getDriverReviewsAdmin(driverId);
+  @UseGuards(GqlJwtAuthGuard, AdminGuard)
+  async driverReviewsAdmin(
+    @Args('driverId', { type: () => Int }) driverId: number): Promise<ReviewType[]> {
+    const reviews = await this.reviewsService.getDriverReviewsAdmin(driverId);
+    return reviews.map(review => ({
+      ...review,
+      passengerName: review.passenger?.name ?? `Passager #${review.passengerId}`,
+    }));
   }
 
+ 
   
 }
 

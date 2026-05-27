@@ -18,6 +18,9 @@ export class ReviewType {
   @Field(() => Int, { nullable: true })
   passengerId?: number; // only visible to admin
 
+  @Field({ nullable: true })
+  passengerName?: string; // only visible to admin
+
   @Field()
   createdAt: Date;
 }

@@ -25,6 +25,7 @@ export class TripsController {
   @Post()
   create(@Body() dto: CreateTripDto, @CurrentUser() user: User) {
     const driverId = user.id; 
+    console.log("userId for driver creating trip: ",driverId)
     return this.tripsService.createTrip(driverId, dto);
   }
 

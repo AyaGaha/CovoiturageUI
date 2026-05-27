@@ -6,10 +6,11 @@ import { BookingsService } from './bookings.service';
 import { BookingsController } from './bookings.controller';
 import { BookingsResolver } from './bookings.resolver';
 import { TripCancelledListener } from './trip-cancelled.listener';
+import { User } from 'src/users/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Booking, Trip]),
+    TypeOrmModule.forFeature([Booking, Trip, User]),
   ],
   providers: [BookingsService, BookingsResolver, TripCancelledListener],
   controllers: [BookingsController],

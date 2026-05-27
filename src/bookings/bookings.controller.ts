@@ -39,4 +39,6 @@ export class BookingsController {
     const driverId = request.user.id;
     return this.bookingsService.getPendingBookingsForTrip(tripId, driverId);
     }
+
+    
 }

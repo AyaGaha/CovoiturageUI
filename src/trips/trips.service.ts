@@ -120,7 +120,12 @@ export class TripsService {
     trip.status = 'completed';
     const updated = await this.tripRepo.save(trip);
 
-    this.eventEmitter.emit('trip.completed', { tripId, driverId, passengerIds });
+    this.eventEmitter.emit('trip.completed', { tripId: trip.id,
+      driverId: trip.driverId,
+      passengerIds,
+      departure: trip.departure,       // ← ajouté car sta3mltou pour le module de reviews
+      destination: trip.destination,   // ← ajouté 
+    });
 
     return updated;
   }

@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, Sse, U
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
-import { filter, from, fromEvent, map, Observable, Subject, switchMap } from 'rxjs';
+import { filter, from, fromEvent, map, merge, Observable, Subject, switchMap } from 'rxjs';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
@@ -19,9 +19,18 @@ export class ReviewsController {
     return this.reviewsService.submitReview({ ...body, passengerId: user.id });
   }
 
+ 
+
+  @Get('reviews/mine/submitted')
+  @UseGuards(JwtAuthGuard)
+  getMySubmittedReviews(@CurrentUser() user: User) {
+    return this.reviewsService.getPassengerReviews(user.id);
+  }
+
   @Get('reviews/driver/:id')
   getDriverReviews(@Param('id', ParseIntPipe) id: number) {
-    return this.reviewsService.getDriverReviews(id);
+    return this.reviewsService.getDriverReviews(id)
+    .then(reviews => reviews.map(({ passengerId, passenger, ...rest }) => rest));
   }
 
   @Patch('reviews/:id')
@@ -29,8 +38,7 @@ export class ReviewsController {
   updateReview(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateReviewDto,
-    @CurrentUser() user: User
-  ) {
+    @CurrentUser() user: User) {
     return this.reviewsService.updateReview(id, dto, user.id);
   }
 
@@ -47,9 +55,39 @@ export class ReviewsController {
 
   @Sse('driver/:id/live')
   streamDriverStats(@Param('id', ParseIntPipe) driverId: number) {
-    return fromEvent(this.eventEmitter, 'review.submitted').pipe(
-    filter((payload: any) => payload.driverId === driverId),
-    map((payload: any) => ({type:'review.submitted', data: { averageRating: payload.averageRating } })),
+    return merge(
+      fromEvent(this.eventEmitter, 'review.submitted').pipe(
+        filter((payload: any) => payload.driverId === driverId),
+        map((payload: any) => ({
+          type: 'review.submitted',
+          data: {
+            averageRating: payload.averageRating,
+            newReview: payload.newReview,
+          },
+        })),
+      ),
+
+      fromEvent(this.eventEmitter, 'review.updated').pipe(
+        filter((payload: any) => payload.driverId === driverId),
+        map((payload: any) => ({
+          type: 'review.updated',
+          data: {
+            averageRating: payload.averageRating,
+            updatedReview: payload.updatedReview,
+          },
+        })),
+      ),
+
+      fromEvent(this.eventEmitter, 'review.deleted').pipe(
+        filter((payload: any) => payload.driverId === driverId),
+        map((payload: any) => ({
+          type: 'review.deleted',
+          data: {
+            averageRating: payload.averageRating,
+            deletedReview: payload.deletedReview,
+          },
+        })),
+      ),
     );
   }
 
@@ -58,12 +96,14 @@ export class ReviewsController {
     return fromEvent(this.eventEmitter, 'trip.completed').pipe(
       filter((payload: any) => payload.passengerIds.includes(passengerId)),
       map((payload: any) => ({
-        type: 'trip.completed',
-        data: {
-          tripId: payload.tripId,
-          message: 'Votre trajet est terminé, pensez à évaluer votre conducteur !',
-          driverId: payload.driverId,
-        },
+      type: 'trip.completed',
+      data: {
+        tripId: payload.tripId,
+        driverId: payload.driverId,
+        departure: payload.departure,
+        destination: payload.destination,
+        message: 'Votre trajet est terminé, pensez à évaluer votre conducteur !',
+      },
       } as MessageEvent)),
     );
 
@@ -83,9 +123,9 @@ export class ReviewsController {
     );
   }
 
-@Post('driver/:id/recompute-badges')
-recomputeBadges(@Param('id', ParseIntPipe) driverId: number) {
-  return this.reviewsService.computeAndSaveBadges(driverId);
-}
+  @Post('driver/:id/recompute-badges')
+  recomputeBadges(@Param('id', ParseIntPipe) driverId: number) {
+    return this.reviewsService.computeAndSaveBadges(driverId);
+  }
   
 }

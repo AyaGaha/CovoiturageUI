@@ -26,6 +26,7 @@ export class TripType {
   @Field(() => Int)
   driverId: number;
 
+  
 
   @Field({ nullable: true })
   description: string; 

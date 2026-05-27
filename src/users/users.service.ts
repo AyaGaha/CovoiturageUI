@@ -90,5 +90,34 @@ export class UsersService {
     // Return updated user
     return this.findById(userId);
   }
-}
 
+  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+    // Find user
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    // Verify current password
+    const isPasswordValid = await this.validatePassword(currentPassword, user.password);
+    if (!isPasswordValid) {
+      throw new ConflictException('Le mot de passe actuel est incorrect');
+    }
+
+    // Check if new password is same as current
+    const isSamePassword = await this.validatePassword(newPassword, user.password);
+    if (isSamePassword) {
+      throw new ConflictException('Le nouveau mot de passe doit être différent de l\'ancien');
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    await this.usersRepository.update(userId, {
+      password: hashedPassword,
+    });
+
+    return { message: 'Mot de passe modifié avec succès' };
+  }
+}

@@ -10,6 +10,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { User } from 'src/users/entities/user.entity';
@@ -40,9 +41,25 @@ export class AuthController {
     @CurrentUser() user: User,
   ) {
     if (!refreshTokenDto.refreshToken) {
-      throw new BadRequestException('Refresh token obligatoire');
+      throw new BadRequestException('Le refresh token est requis');
     }
     return this.authService.logout(refreshTokenDto.refreshToken);
   }
-}
 
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Body(ValidationPipe) changePasswordDto: ChangePasswordDto,
+    @CurrentUser() user: User,
+  ) {
+    if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
+      throw new BadRequestException('Les mots de passe ne correspondent pas');
+    }
+    return this.authService.changePassword(
+      user.id,
+      changePasswordDto.currentPassword,
+      changePasswordDto.newPassword,
+      changePasswordDto.confirmPassword,
+    );
+  }
+}
